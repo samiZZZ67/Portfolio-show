@@ -11,12 +11,16 @@
   const originalOpenAddVideoModal =
     typeof window.openAddVideoModal === "function" ? window.openAddVideoModal : null;
   const originalEditVideo = typeof window.editVideo === "function" ? window.editVideo : null;
+  const originalRenderProfile = typeof window.renderProfile === "function" ? window.renderProfile : null;
+  const originalRenderDashboard =
+    typeof window.renderDashboard === "function" ? window.renderDashboard : null;
 
   function replaceState(payload) {
     const editors = Array.isArray(payload.editors) ? payload.editors : [];
     window.__elaBootstrap = payload;
     window.__elaEditors = editors;
     window.currentUser = payload.current_user || null;
+    window.currentUserRole = payload.current_user_role || null;
 
     if (window.currentUser) {
       localStorage.setItem("ela_current_user", window.currentUser);
@@ -100,6 +104,63 @@
     }
   }
 
+  function isCurrentUserEditor() {
+    return window.currentUserRole === "editor";
+  }
+
+  function isCurrentUserClient() {
+    return window.currentUserRole === "client";
+  }
+
+  function currentViewerProfile() {
+    return window.currentUser ? editorByUsername(window.currentUser) : null;
+  }
+
+  function openDashboardProfileEditor() {
+    window.navigate("dashboard");
+    window.__elaActiveDashboardTab = "profile";
+    setTimeout(() => {
+      if (typeof window.switchDashTab === "function") {
+        window.switchDashTab("profile");
+      }
+    }, 30);
+  }
+
+  function openDashboardContactsEditor() {
+    window.navigate("dashboard");
+    window.__elaActiveDashboardTab = "contacts";
+    setTimeout(() => {
+      if (typeof window.switchDashTab === "function") {
+        window.switchDashTab("contacts");
+      }
+    }, 30);
+  }
+
+  function openDashboardUploadModal() {
+    if (!isCurrentUserEditor()) {
+      return;
+    }
+    window.navigate("dashboard");
+    window.__elaActiveDashboardTab = "videos";
+    setTimeout(() => {
+      if (typeof window.switchDashTab === "function") {
+        window.switchDashTab("videos");
+      }
+      if (typeof window.openAddVideoModal === "function") {
+        window.openAddVideoModal();
+      }
+    }, 40);
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function renderCurrentContexts() {
     if (window.currentPage === "dashboard" && typeof window.renderDashboard === "function") {
       const activeTab = window.__elaActiveDashboardTab || "videos";
@@ -121,6 +182,7 @@
     if (window.currentPage === "home" && typeof window.renderFeatured === "function") {
       window.renderFeatured();
     }
+    ensureFloatingUploadButton();
   }
 
   function openPlayerForVideo(editor, video) {
@@ -251,6 +313,303 @@
     setVideoSourceMode(mode || "link", "");
   }
 
+  function copyTextToClipboard(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return Promise.resolve();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    const fallback = document.createElement("textarea");
+    fallback.value = text;
+    fallback.setAttribute("readonly", "");
+    fallback.style.position = "fixed";
+    fallback.style.left = "-9999px";
+    document.body.appendChild(fallback);
+    fallback.select();
+    document.execCommand("copy");
+    document.body.removeChild(fallback);
+    return Promise.resolve();
+  }
+
+  function ensureSignupEnhancements() {
+    const usernameGroup = document.getElementById("signupUsername")?.closest("div");
+    const bioGroup = document.getElementById("signupBio")?.closest("div");
+    if (!usernameGroup || !bioGroup) {
+      return;
+    }
+
+    if (!document.getElementById("signupRole")) {
+      const roleBlock = document.createElement("div");
+      roleBlock.innerHTML =
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Account Type</label>` +
+        `<select class="input-field" id="signupRole">` +
+        `<option value="editor">Editor</option>` +
+        `<option value="client">Client</option>` +
+        `</select>`;
+      usernameGroup.parentNode.insertBefore(roleBlock, usernameGroup);
+
+      const cnameBlock = document.createElement("div");
+      cnameBlock.innerHTML =
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Display Name / cname</label>` +
+        `<input type="text" class="input-field" id="signupCname" placeholder="How you want to appear publicly">`;
+      usernameGroup.parentNode.insertBefore(cnameBlock, usernameGroup.nextSibling);
+
+      const avatarBlock = document.createElement("div");
+      avatarBlock.innerHTML =
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Profile Image</label>` +
+        `<input type="file" class="input-field" id="signupAvatarFile" accept=".jpg,.jpeg,.png,.webp,.gif,image/*">` +
+        `<p style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Upload a local profile image for your account.</p>`;
+      bioGroup.parentNode.insertBefore(avatarBlock, bioGroup);
+    }
+  }
+
+  function ensureDashboardEnhancements() {
+    const usernameInput = document.getElementById("editUsername");
+    const avatarGroup = document.getElementById("editAvatar")?.closest("div");
+    const profileCard = document.querySelector("#dashProfileTab .dashboard-card");
+    const contactsButton = document.querySelector('#dashContactsTab button[onclick="saveContacts()"]');
+    if (!usernameInput || !avatarGroup || !profileCard || !contactsButton) {
+      return;
+    }
+
+    usernameInput.disabled = false;
+    usernameInput.style.opacity = "1";
+    const usernameLabel = usernameInput.closest("div")?.querySelector("label");
+    if (usernameLabel) {
+      usernameLabel.textContent = "Username";
+    }
+
+    if (!document.getElementById("editCname")) {
+      const cnameBlock = document.createElement("div");
+      cnameBlock.innerHTML =
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Display Name / cname</label>` +
+        `<input type="text" class="input-field" id="editCname" placeholder="Public display name">`;
+      usernameInput.closest("div").insertAdjacentElement("afterend", cnameBlock);
+    }
+
+    if (!document.getElementById("editAvatarFile")) {
+      const avatarFileBlock = document.createElement("div");
+      avatarFileBlock.innerHTML =
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Profile Image Upload</label>` +
+        `<input type="file" class="input-field" id="editAvatarFile" accept=".jpg,.jpeg,.png,.webp,.gif,image/*">` +
+        `<p id="editAvatarFileStatus" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Upload a local image to replace the current profile image.</p>`;
+      avatarGroup.insertAdjacentElement("afterend", avatarFileBlock);
+    }
+
+    if (!document.getElementById("portfolioSetupNotice")) {
+      const setupBlock = document.createElement("div");
+      setupBlock.id = "portfolioSetupNotice";
+      setupBlock.className = "card";
+      setupBlock.style.padding = "18px";
+      setupBlock.style.marginBottom = "18px";
+      profileCard.insertBefore(setupBlock, profileCard.firstChild.nextSibling);
+    }
+
+    if (!document.getElementById("otherContactsManager")) {
+      const manager = document.createElement("div");
+      manager.id = "otherContactsManager";
+      manager.innerHTML =
+        `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0 12px;">` +
+        `<div>` +
+        `<div style="font-weight:700;font-size:0.95rem;">Other Social / Contact Links</div>` +
+        `<div style="color:var(--text-secondary);font-size:0.8rem;">Add portfolio-friendly links such as Instagram, LinkedIn, Behance, or a booking page.</div>` +
+        `</div>` +
+        `<button type="button" class="btn-secondary btn-sm" id="addOtherContactBtn">Add Link</button>` +
+        `</div>` +
+        `<div id="otherContactsRows" style="display:flex;flex-direction:column;gap:12px;"></div>`;
+      contactsButton.insertAdjacentElement("beforebegin", manager);
+      document.getElementById("addOtherContactBtn").addEventListener("click", function () {
+        addOtherContactRow();
+      });
+    }
+  }
+
+  function createOtherContactRow(contact = {}) {
+    const row = document.createElement("div");
+    row.className = "other-contact-row";
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1fr 1.3fr auto";
+    row.style.gap = "10px";
+    row.innerHTML =
+      `<input type="text" class="input-field other-contact-label" placeholder="Label" value="${escapeHtml(
+        contact.label || ""
+      )}">` +
+      `<input type="text" class="input-field other-contact-value" placeholder="https://example.com" value="${escapeHtml(
+        contact.value || ""
+      )}">` +
+      `<button type="button" class="btn-icon other-contact-remove" title="Remove"><i class="fas fa-times"></i></button>`;
+    row.querySelector(".other-contact-remove").addEventListener("click", function () {
+      row.remove();
+    });
+    return row;
+  }
+
+  function addOtherContactRow(contact = {}) {
+    const rows = document.getElementById("otherContactsRows");
+    if (!rows) {
+      return;
+    }
+    rows.appendChild(createOtherContactRow(contact));
+  }
+
+  function populateOtherContactsRows(contacts) {
+    const rows = document.getElementById("otherContactsRows");
+    if (!rows) {
+      return;
+    }
+    rows.innerHTML = "";
+    (contacts || []).forEach((contact) => addOtherContactRow(contact));
+  }
+
+  function collectOtherContacts() {
+    return Array.from(document.querySelectorAll(".other-contact-row"))
+      .map((row) => {
+        const label = row.querySelector(".other-contact-label")?.value.trim() || "";
+        const value = row.querySelector(".other-contact-value")?.value.trim() || "";
+        return { label, value };
+      })
+      .filter((item) => item.label || item.value);
+  }
+
+  function renderSetupNotice(editor) {
+    const setupNotice = document.getElementById("portfolioSetupNotice");
+    if (!setupNotice || !editor) {
+      return;
+    }
+
+    if (!editor.setup || editor.setup.is_complete) {
+      setupNotice.style.display = "none";
+      return;
+    }
+
+    const items = [];
+    if (editor.setup.needs_avatar) {
+      items.push("Upload a profile image");
+    }
+    if (editor.setup.needs_contact) {
+      items.push("Add contact methods clients can use");
+    }
+    if (editor.setup.needs_video && editor.role === "editor") {
+      items.push("Upload or link your first portfolio video");
+    }
+
+    setupNotice.style.display = "block";
+    setupNotice.innerHTML =
+      `<div style="font-weight:700;font-size:1rem;margin-bottom:8px;">Finish your setup</div>` +
+      `<p style="color:var(--text-secondary);font-size:0.9rem;line-height:1.6;margin-bottom:12px;">Complete the remaining steps so your profile feels polished and ready to share.</p>` +
+      `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">${items
+        .map(
+          (item) =>
+            `<div style="display:flex;align-items:center;gap:8px;color:var(--text-primary);font-size:0.9rem;"><i class="fas fa-check-circle" style="color:var(--accent);"></i>${item}</div>`
+        )
+        .join("")}</div>` +
+      `<div style="display:flex;gap:10px;flex-wrap:wrap;">` +
+      `<button type="button" class="btn-secondary btn-sm" id="setupContactsBtn">Contacts</button>` +
+      `${
+        editor.role === "editor"
+          ? `<button type="button" class="btn-primary btn-sm" id="setupUploadBtn"><i class="fas fa-upload"></i> Upload Video</button>`
+          : ""
+      }` +
+      `</div>`;
+
+    document.getElementById("setupContactsBtn")?.addEventListener("click", openDashboardContactsEditor);
+    document.getElementById("setupUploadBtn")?.addEventListener("click", openDashboardUploadModal);
+  }
+
+  function renderProfileActionButtons(editor) {
+    const contactBtn = document.getElementById("contactBtn");
+    if (!contactBtn || !editor) {
+      return;
+    }
+
+    const parent = contactBtn.parentElement;
+    parent.style.display = "flex";
+    parent.style.gap = "12px";
+    parent.style.flexWrap = "wrap";
+    parent.style.alignItems = "center";
+
+    let actionHost = document.getElementById("profileActionHost");
+    if (!actionHost) {
+      actionHost = document.createElement("div");
+      actionHost.id = "profileActionHost";
+      actionHost.style.display = "flex";
+      actionHost.style.gap = "12px";
+      actionHost.style.flexWrap = "wrap";
+      parent.appendChild(actionHost);
+    }
+
+    actionHost.innerHTML = "";
+
+    if (editor.can_edit) {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "btn-secondary";
+      editBtn.innerHTML = '<i class="fas fa-pen"></i> Edit Portfolio';
+      editBtn.addEventListener("click", openDashboardProfileEditor);
+      actionHost.appendChild(editBtn);
+
+      if (editor.role === "editor") {
+        const uploadBtn = document.createElement("button");
+        uploadBtn.type = "button";
+        uploadBtn.className = "btn-primary";
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
+        uploadBtn.addEventListener("click", openDashboardUploadModal);
+        actionHost.appendChild(uploadBtn);
+      }
+    } else {
+      const followBtn = document.createElement("button");
+      followBtn.type = "button";
+      followBtn.className = editor.is_following ? "btn-secondary" : "btn-primary";
+      followBtn.innerHTML = editor.is_following
+        ? '<i class="fas fa-user-check"></i> Following'
+        : '<i class="fas fa-user-plus"></i> Follow';
+      followBtn.addEventListener("click", async function () {
+        if (!window.currentUser) {
+          window.openModal("loginModal");
+          return;
+        }
+        try {
+          const payload = await postForm(
+            `/api/follow/${encodeURIComponent(editor.username)}/toggle/`,
+            {}
+          );
+          replaceState(payload);
+          renderCurrentContexts();
+          window.showToast(payload.message, "success");
+        } catch (error) {
+          window.showToast(error.message, "error");
+        }
+      });
+      actionHost.appendChild(followBtn);
+    }
+  }
+
+  function ensureFloatingUploadButton() {
+    let button = document.getElementById("floatingUploadAction");
+    if (!button) {
+      button = document.createElement("button");
+      button.id = "floatingUploadAction";
+      button.className = "btn-primary";
+      button.style.position = "fixed";
+      button.style.right = "24px";
+      button.style.bottom = "24px";
+      button.style.zIndex = "1200";
+      button.style.padding = "14px 20px";
+      button.style.display = "none";
+      button.innerHTML = '<i class="fas fa-upload"></i> Upload Video';
+      button.addEventListener("click", openDashboardUploadModal);
+      document.body.appendChild(button);
+    }
+
+    const shouldShow =
+      Boolean(window.currentUser) &&
+      isCurrentUserEditor() &&
+      (window.currentPage === "home" || window.currentPage === "discover");
+    button.style.display = shouldShow ? "inline-flex" : "none";
+  }
+
   function editorByUsername(username) {
     return (window.__elaEditors || []).find((editor) => editor.username === username) || null;
   }
@@ -278,21 +637,43 @@
 
   window.handleSignup = async function () {
     try {
-      const payload = await postForm("/auth/signup/", {
-        username: document.getElementById("signupUsername").value.trim(),
-        password: document.getElementById("signupPassword").value,
-        email: document.getElementById("signupEmail").value.trim(),
-        bio: document.getElementById("signupBio").value.trim(),
-      });
+      const formData = new FormData();
+      formData.append("role", document.getElementById("signupRole")?.value || "editor");
+      formData.append("cname", document.getElementById("signupCname")?.value.trim() || "");
+      formData.append("username", document.getElementById("signupUsername").value.trim());
+      formData.append("password", document.getElementById("signupPassword").value);
+      formData.append("email", document.getElementById("signupEmail").value.trim());
+      formData.append("bio", document.getElementById("signupBio").value.trim());
+      const avatarFile = document.getElementById("signupAvatarFile");
+      if (avatarFile && avatarFile.files && avatarFile.files[0]) {
+        formData.append("avatar_file", avatarFile.files[0]);
+      }
+
+      const payload = await postMultipartForm("/auth/signup/", formData);
 
       replaceState(payload);
+      if (document.getElementById("signupRole")) {
+        document.getElementById("signupRole").value = "editor";
+      }
+      if (document.getElementById("signupCname")) {
+        document.getElementById("signupCname").value = "";
+      }
       document.getElementById("signupUsername").value = "";
       document.getElementById("signupPassword").value = "";
       document.getElementById("signupEmail").value = "";
       document.getElementById("signupBio").value = "";
+      if (document.getElementById("signupAvatarFile")) {
+        document.getElementById("signupAvatarFile").value = "";
+      }
       window.closeModal("signupModal");
       window.showToast(payload.message, "success");
       window.navigate("dashboard");
+      window.__elaActiveDashboardTab = "profile";
+      setTimeout(() => {
+        if (typeof window.switchDashTab === "function") {
+          window.switchDashTab("profile");
+        }
+      }, 30);
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -311,6 +692,14 @@
       window.closeModal("loginModal");
       window.showToast(payload.message, "success");
       window.navigate("dashboard");
+      if (isCurrentUserClient()) {
+        window.__elaActiveDashboardTab = "profile";
+        setTimeout(() => {
+          if (typeof window.switchDashTab === "function") {
+            window.switchDashTab("profile");
+          }
+        }, 30);
+      }
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -329,12 +718,31 @@
 
   window.saveProfile = async function () {
     try {
-      const payload = await postForm("/api/profile/", {
-        bio: document.getElementById("editBio").value.trim(),
-        avatar_url: document.getElementById("editAvatar").value.trim(),
-      });
+      const oldUsername = window.currentUser;
+      const formData = new FormData();
+      formData.append("username", document.getElementById("editUsername").value.trim());
+      formData.append("cname", document.getElementById("editCname")?.value.trim() || "");
+      formData.append("bio", document.getElementById("editBio").value.trim());
+      formData.append("avatar_url", document.getElementById("editAvatar").value.trim());
+      const avatarInput = document.getElementById("editAvatarFile");
+      if (avatarInput && avatarInput.files && avatarInput.files[0]) {
+        formData.append("avatar_file", avatarInput.files[0]);
+      }
+
+      const payload = await postMultipartForm("/api/profile/", formData);
 
       replaceState(payload);
+      if (
+        oldUsername &&
+        window.currentProfileUser === oldUsername &&
+        window.currentUser === payload.updated_username
+      ) {
+        window.currentProfileUser = payload.updated_username;
+        syncHistory("profile", payload.updated_username);
+      }
+      if (document.getElementById("editAvatarFile")) {
+        document.getElementById("editAvatarFile").value = "";
+      }
       renderCurrentContexts();
       window.showToast(payload.message, "success");
     } catch (error) {
@@ -349,6 +757,7 @@
         telegram: document.getElementById("contactTelegram").value.trim(),
         whatsapp: document.getElementById("contactWhatsapp").value.trim(),
         phone: document.getElementById("contactPhone").value.trim(),
+        other_contacts_json: JSON.stringify(collectOtherContacts()),
       });
 
       replaceState(payload);
@@ -471,6 +880,242 @@
     }
   };
 
+  window.renderContactMethods = function (editor) {
+    const container = document.getElementById("contactMethods");
+    if (!container || !editor) {
+      return;
+    }
+
+    const methods = [];
+    if (editor.email) {
+      methods.push({
+        label: "Email",
+        value: editor.email,
+        href: `mailto:${editor.email}`,
+        icon: "fas fa-envelope",
+        bg: "rgba(234,67,53,0.15)",
+        color: "#ea4335",
+      });
+    }
+    if (editor.telegram) {
+      methods.push({
+        label: "Telegram",
+        value: editor.telegram,
+        href: `https://t.me/${editor.telegram.replace("@", "")}`,
+        icon: "fab fa-telegram",
+        bg: "rgba(0,136,204,0.15)",
+        color: "#0088cc",
+      });
+    }
+    if (editor.whatsapp) {
+      methods.push({
+        label: "WhatsApp",
+        value: editor.whatsapp,
+        href: `https://wa.me/${editor.whatsapp.replace(/[^0-9]/g, "")}`,
+        icon: "fab fa-whatsapp",
+        bg: "rgba(37,211,102,0.15)",
+        color: "#25d366",
+      });
+    }
+    if (editor.phone) {
+      methods.push({
+        label: "Phone",
+        value: editor.phone,
+        href: `tel:${editor.phone}`,
+        icon: "fas fa-phone",
+        bg: "var(--accent-glow)",
+        color: "var(--accent)",
+      });
+    }
+    (editor.other_contacts || []).forEach((contact) => {
+      methods.push({
+        label: contact.label,
+        value: contact.value,
+        href: contact.value,
+        icon: "fas fa-link",
+        bg: "rgba(255,140,66,0.15)",
+        color: "#ff8c42",
+      });
+    });
+
+    if (!methods.length) {
+      container.innerHTML = '<p style="color:var(--text-muted);">No contact methods available</p>';
+      return;
+    }
+
+    container.innerHTML = methods
+      .map(
+        (method, index) =>
+          `<div style="display:flex;gap:10px;align-items:stretch;">` +
+          `<a href="${escapeHtml(method.href)}" ${
+            method.href.startsWith("http") ? 'target="_blank" rel="noopener noreferrer"' : ""
+          } class="contact-method" style="flex:1;">` +
+          `<div class="icon-wrap" style="background:${method.bg};color:${method.color};"><i class="${method.icon}"></i></div>` +
+          `<div>` +
+          `<div style="font-weight:600;font-size:0.9rem;">${escapeHtml(method.label)}</div>` +
+          `<div style="color:var(--text-secondary);font-size:0.85rem;word-break:break-word;">${escapeHtml(method.value)}</div>` +
+          `</div>` +
+          `<i class="fas fa-external-link-alt" style="margin-left:auto;color:var(--text-muted);font-size:0.8rem;"></i>` +
+          `</a>` +
+          `<button type="button" class="btn-icon contact-copy-btn" data-copy-index="${index}" title="Copy ${method.label}">` +
+          `<i class="fas fa-copy"></i>` +
+          `</button>` +
+          `</div>`
+      )
+      .join("");
+
+    Array.from(container.querySelectorAll(".contact-copy-btn")).forEach((button) => {
+      button.addEventListener("click", async function () {
+        const method = methods[Number(this.dataset.copyIndex)];
+        try {
+          await copyTextToClipboard(method.value);
+          window.showToast(`${method.label} copied`, "success");
+        } catch (error) {
+          window.showToast("Unable to copy that contact value.", "error");
+        }
+      });
+    });
+  };
+
+  if (originalRenderProfile) {
+    window.renderProfile = function (username) {
+      originalRenderProfile(username);
+      const editor = editorByUsername(username);
+      if (!editor) {
+        return;
+      }
+
+      const profileName = document.getElementById("profileName");
+      if (profileName) {
+        profileName.textContent = editor.display_name || editor.username;
+        let handle = document.getElementById("profileUsernameHandle");
+        if (!handle) {
+          handle = document.createElement("div");
+          handle.id = "profileUsernameHandle";
+          handle.style.color = "var(--text-secondary)";
+          handle.style.marginTop = "6px";
+          handle.style.fontSize = "0.95rem";
+          profileName.insertAdjacentElement("afterend", handle);
+        }
+        handle.textContent =
+          editor.display_name && editor.display_name !== editor.username ? `@${editor.username}` : "";
+      }
+
+      const badge = document.getElementById("profileBadge");
+      if (badge) {
+        badge.textContent =
+          editor.role === "editor"
+            ? `${editor.role_label} · ${editor.videos.length} video${editor.videos.length === 1 ? "" : "s"}`
+            : `${editor.role_label} Account`;
+      }
+
+      const stats = document.getElementById("profileStats");
+      if (stats) {
+        const shortCount = editor.videos.filter((video) => video.type === "short").length;
+        const longCount = editor.videos.filter((video) => video.type === "long").length;
+        const totalViews = editor.videos.reduce((sum, video) => sum + (video.views || 0), 0);
+        const contactCount =
+          [editor.email, editor.telegram, editor.whatsapp, editor.phone].filter(Boolean).length +
+          (editor.other_contacts || []).length;
+        if (editor.role === "editor") {
+          stats.innerHTML =
+            `<div class="profile-stat"><div class="num">${shortCount}</div><div class="label">Short</div></div>` +
+            `<div class="profile-stat"><div class="num">${longCount}</div><div class="label">Long</div></div>` +
+            `<div class="profile-stat"><div class="num">${window.formatNumber(totalViews)}</div><div class="label">Views</div></div>` +
+            `<div class="profile-stat"><div class="num">${editor.followers_count || 0}</div><div class="label">Followers</div></div>`;
+        } else {
+          stats.innerHTML =
+            `<div class="profile-stat"><div class="num">${editor.followers_count || 0}</div><div class="label">Followers</div></div>` +
+            `<div class="profile-stat"><div class="num">${editor.following_count || 0}</div><div class="label">Following</div></div>` +
+            `<div class="profile-stat"><div class="num">${contactCount}</div><div class="label">Contacts</div></div>`;
+        }
+      }
+
+      const tabs = document.getElementById("profileTabs");
+      const filters = document.getElementById("profileCatFilters");
+      if (tabs && filters) {
+        const showPortfolio = editor.role === "editor";
+        tabs.style.display = showPortfolio ? "" : "none";
+        filters.style.display = showPortfolio ? "" : "none";
+        if (!showPortfolio) {
+          const shortEmpty = document.getElementById("shortEmpty");
+          if (shortEmpty) {
+            shortEmpty.style.display = "block";
+            shortEmpty.textContent = "This client account is here to connect and collaborate.";
+          }
+          document.getElementById("shortVideoList").innerHTML = "";
+          document.getElementById("longVideoList").innerHTML = "";
+          document.getElementById("longContent").style.display = "none";
+          document.getElementById("shortContent").style.display = "block";
+        }
+      }
+
+      renderProfileActionButtons(editor);
+      window.renderContactMethods(editor);
+      ensureFloatingUploadButton();
+    };
+  }
+
+  if (originalRenderDashboard) {
+    window.renderDashboard = function () {
+      originalRenderDashboard();
+      ensureDashboardEnhancements();
+      const editor = currentViewerProfile();
+      if (!editor) {
+        return;
+      }
+
+      document.getElementById("dashUsername").textContent = editor.display_name || editor.username;
+      document.getElementById("dashProfileUrl").textContent = `${window.location.origin}/${editor.username}`;
+      document.getElementById("editUsername").value = editor.username;
+      document.getElementById("editBio").value = editor.bio || "";
+      document.getElementById("editAvatar").value = editor.avatar_url || "";
+      if (document.getElementById("editCname")) {
+        document.getElementById("editCname").value = editor.cname || "";
+      }
+      if (document.getElementById("editAvatarFileStatus")) {
+        document.getElementById("editAvatarFileStatus").textContent = editor.has_custom_avatar
+          ? "A profile image is already saved. Upload a new file to replace it."
+          : "Upload a local image to replace the generated profile image.";
+      }
+
+      populateOtherContactsRows(editor.other_contacts || []);
+      renderSetupNotice(editor);
+
+      const videosTabButton = document.querySelector('[data-dtab="videos"]');
+      const dashVideosTab = document.getElementById("dashVideosTab");
+      const addVideoButtons = document.querySelectorAll(
+        '[onclick*="openAddVideoModal"], [onclick*="addVideoModal"]'
+      );
+      if (editor.role === "client") {
+        if (videosTabButton) {
+          videosTabButton.style.display = "none";
+        }
+        if (dashVideosTab) {
+          dashVideosTab.style.display = "none";
+        }
+        addVideoButtons.forEach((button) => {
+          button.style.display = "none";
+        });
+        if ((window.__elaActiveDashboardTab || "videos") === "videos") {
+          window.__elaActiveDashboardTab = "profile";
+          if (typeof window.switchDashTab === "function") {
+            window.switchDashTab("profile");
+          }
+        }
+      } else {
+        if (videosTabButton) {
+          videosTabButton.style.display = "";
+        }
+        addVideoButtons.forEach((button) => {
+          button.style.display = "";
+        });
+      }
+
+      ensureFloatingUploadButton();
+    };
+  }
+
   if (originalSwitchDashTab) {
     window.switchDashTab = function (tab) {
       window.__elaActiveDashboardTab = tab;
@@ -543,5 +1188,8 @@
   if (!window.__elaActiveDashboardTab) {
     window.__elaActiveDashboardTab = "videos";
   }
+  ensureSignupEnhancements();
+  ensureDashboardEnhancements();
   ensureVideoSourceControls();
+  ensureFloatingUploadButton();
 })();

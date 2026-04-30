@@ -20,10 +20,19 @@ class VideoCategory(models.TextChoices):
     CORPORATE = "Corporate", "Corporate"
 
 
+class AccountRole(models.TextChoices):
+    EDITOR = "editor", "Editor"
+    CLIENT = "client", "Client"
+
+
 class VideoSourceType(models.TextChoices):
     LINK = "link", "Link"
     UPLOAD = "upload", "Upload"
     BOTH = "both", "Both"
+
+
+def profile_avatar_upload_to(instance, filename):
+    return f"profile_avatars/{instance.user.username}/{filename}"
 
 
 def portfolio_video_upload_to(instance, filename):
@@ -38,11 +47,19 @@ class EditorProfile(models.Model):
         on_delete=models.CASCADE,
         related_name="editor_profile",
     )
+    role = models.CharField(
+        max_length=10,
+        choices=AccountRole.choices,
+        default=AccountRole.EDITOR,
+    )
+    cname = models.CharField(max_length=150, blank=True)
     bio = models.TextField(blank=True, default=default_bio)
+    avatar_file = models.FileField(upload_to=profile_avatar_upload_to, blank=True)
     avatar_url = models.URLField(max_length=500, blank=True)
     telegram = models.CharField(max_length=64, blank=True)
     whatsapp = models.CharField(max_length=32, blank=True)
     phone = models.CharField(max_length=32, blank=True)
+    other_contacts = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -58,10 +75,35 @@ class EditorProfile(models.Model):
 
     @property
     def avatar(self):
+        if self.avatar_file:
+            return self.avatar_file.url
         return self.avatar_url or self.build_default_avatar_url(self.user.username)
 
+    @property
+    def display_name(self):
+        return self.cname or self.user.username
+
+    @property
+    def is_editor(self):
+        return self.role == AccountRole.EDITOR
+
+    @property
+    def is_client(self):
+        return self.role == AccountRole.CLIENT
+
+    @property
+    def has_custom_avatar(self):
+        return bool(self.avatar_file or self.avatar_url)
+
     def has_contact_method(self):
-        return any([self.user.email, self.telegram, self.whatsapp, self.phone])
+        return any([self.user.email, self.telegram, self.whatsapp, self.phone, self.other_contacts])
+
+    def setup_state(self):
+        return {
+            "needs_avatar": not self.has_custom_avatar,
+            "needs_contact": not self.has_contact_method(),
+            "needs_video": self.is_editor and not self.videos.exists(),
+        }
 
 
 class PortfolioVideo(models.Model):
@@ -126,3 +168,29 @@ class PortfolioVideo(models.Model):
         super().delete(*args, **kwargs)
         if uploaded_file:
             uploaded_file.delete(save=False)
+
+
+class FollowRelationship(models.Model):
+    follower = models.ForeignKey(
+        EditorProfile,
+        on_delete=models.CASCADE,
+        related_name="following_relationships",
+    )
+    followed = models.ForeignKey(
+        EditorProfile,
+        on_delete=models.CASCADE,
+        related_name="follower_relationships",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["follower", "followed"],
+                name="unique_follow_relationship",
+            )
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.follower.user.username} -> {self.followed.user.username}"

@@ -1,12 +1,16 @@
+import json
+import re
+
 from django import forms
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.core.validators import FileExtensionValidator
+from django.core.validators import FileExtensionValidator, URLValidator
 from django.db import transaction
 
 from .models import (
+    AccountRole,
     EditorProfile,
     PortfolioVideo,
     VideoCategory,
@@ -26,6 +30,15 @@ RESERVED_USERNAMES = {
 
 
 class SignUpForm(forms.Form):
+    role = forms.ChoiceField(
+        required=False,
+        choices=AccountRole.choices,
+        initial=AccountRole.EDITOR,
+    )
+    cname = forms.CharField(
+        required=False,
+        max_length=150,
+    )
     username = forms.CharField(
         min_length=3,
         max_length=150,
@@ -67,6 +80,14 @@ class SignUpForm(forms.Form):
             }
         ),
     )
+    avatar_file = forms.FileField(
+        required=False,
+        validators=[
+            FileExtensionValidator(
+                allowed_extensions=["jpg", "jpeg", "png", "webp", "gif"],
+            )
+        ],
+    )
 
     def clean_username(self):
         username = self.cleaned_data["username"]
@@ -82,6 +103,12 @@ class SignUpForm(forms.Form):
         validate_password(password, user=temp_user)
         return password
 
+    def clean_avatar_file(self):
+        avatar_file = self.cleaned_data.get("avatar_file")
+        if avatar_file and avatar_file.size > 10 * 1024 * 1024:
+            raise ValidationError("Profile images must be 10 MB or smaller.")
+        return avatar_file
+
     @transaction.atomic
     def save(self):
         user = User.objects.create_user(
@@ -90,8 +117,12 @@ class SignUpForm(forms.Form):
             password=self.cleaned_data["password"],
         )
         profile = user.editor_profile
+        profile.role = self.cleaned_data.get("role") or AccountRole.EDITOR
+        profile.cname = self.cleaned_data.get("cname", "").strip()
         profile.bio = self.cleaned_data["bio"] or EditorProfile.default_bio
-        profile.save(update_fields=["bio", "updated_at"])
+        if self.cleaned_data.get("avatar_file"):
+            profile.avatar_file = self.cleaned_data["avatar_file"]
+        profile.save(update_fields=["role", "cname", "bio", "avatar_file", "updated_at"])
         return user
 
 
@@ -146,9 +177,23 @@ class LoginForm(forms.Form):
 
 
 class ProfileForm(forms.ModelForm):
+    username = forms.CharField(
+        min_length=3,
+        max_length=150,
+    )
+    cname = forms.CharField(required=False, max_length=150)
+    avatar_file = forms.FileField(
+        required=False,
+        validators=[
+            FileExtensionValidator(
+                allowed_extensions=["jpg", "jpeg", "png", "webp", "gif"],
+            )
+        ],
+    )
+
     class Meta:
         model = EditorProfile
-        fields = ("bio", "avatar_url")
+        fields = ("cname", "bio", "avatar_url", "avatar_file")
         widgets = {
             "bio": forms.Textarea(
                 attrs={
@@ -165,6 +210,47 @@ class ProfileForm(forms.ModelForm):
                 }
             ),
         }
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop("user")
+        super().__init__(*args, **kwargs)
+        self.fields["username"].initial = self.user.username
+        self.fields["cname"].initial = self.instance.cname
+
+    def clean_username(self):
+        username = self.cleaned_data["username"]
+        if username.lower() in RESERVED_USERNAMES:
+            raise ValidationError("This username is reserved.")
+        queryset = User.objects.filter(username=username).exclude(pk=self.user.pk)
+        if queryset.exists():
+            raise ValidationError("This username is already taken.")
+        return username
+
+    def clean_avatar_file(self):
+        avatar_file = self.cleaned_data.get("avatar_file")
+        if avatar_file and avatar_file.size > 10 * 1024 * 1024:
+            raise ValidationError("Profile images must be 10 MB or smaller.")
+        return avatar_file
+
+    def save(self, commit=True):
+        previous_avatar = None
+        if self.instance and not self.instance._state.adding:
+            previous_avatar = EditorProfile.objects.get(pk=self.instance.pk).avatar_file
+
+        profile = super().save(commit=False)
+        self.user.username = self.cleaned_data["username"]
+        self.user.save(update_fields=["username"])
+        profile.cname = self.cleaned_data["cname"].strip()
+
+        avatar_file = self.cleaned_data.get("avatar_file")
+        if avatar_file:
+            if previous_avatar and previous_avatar.name and previous_avatar.name != avatar_file.name:
+                previous_avatar.delete(save=False)
+            profile.avatar_file = avatar_file
+
+        if commit:
+            profile.save()
+        return profile
 
 
 class ContactForm(forms.Form):
@@ -211,6 +297,44 @@ class ContactForm(forms.Form):
             }
         ),
     )
+    other_contacts_json = forms.CharField(required=False)
+
+    def clean_other_contacts_json(self):
+        raw_value = self.cleaned_data.get("other_contacts_json", "").strip()
+        if not raw_value:
+            return []
+
+        try:
+            decoded = json.loads(raw_value)
+        except json.JSONDecodeError as exc:
+            raise ValidationError("Additional contact links could not be read.") from exc
+
+        if not isinstance(decoded, list):
+            raise ValidationError("Additional contact links must be a list.")
+
+        validate_url = URLValidator(schemes=["http", "https"])
+        normalized_contacts = []
+        for item in decoded:
+            if not isinstance(item, dict):
+                raise ValidationError("Each additional contact link must be an object.")
+            label = str(item.get("label", "")).strip()
+            value = str(item.get("value", "")).strip()
+            if not label and not value:
+                continue
+            if not label or not value:
+                raise ValidationError("Each additional contact link needs both a label and a URL.")
+            if len(label) > 40:
+                raise ValidationError("Additional contact labels must be 40 characters or fewer.")
+            if not re.match(r"^https?://", value, re.IGNORECASE):
+                value = f"https://{value}"
+            validate_url(value)
+            normalized_contacts.append(
+                {
+                    "label": label,
+                    "value": value,
+                }
+            )
+        return normalized_contacts
 
     def clean(self):
         cleaned_data = super().clean()
@@ -220,6 +344,7 @@ class ContactForm(forms.Form):
                 cleaned_data.get("telegram"),
                 cleaned_data.get("whatsapp"),
                 cleaned_data.get("phone"),
+                cleaned_data.get("other_contacts_json"),
             ]
         ):
             raise ValidationError("At least one contact method is required.")
@@ -231,7 +356,10 @@ class ContactForm(forms.Form):
         profile.telegram = self.cleaned_data["telegram"]
         profile.whatsapp = self.cleaned_data["whatsapp"]
         profile.phone = self.cleaned_data["phone"]
-        profile.save(update_fields=["telegram", "whatsapp", "phone", "updated_at"])
+        profile.other_contacts = self.cleaned_data["other_contacts_json"]
+        profile.save(
+            update_fields=["telegram", "whatsapp", "phone", "other_contacts", "updated_at"]
+        )
         return profile
 
 

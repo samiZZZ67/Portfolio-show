@@ -1,13 +1,21 @@
-from django.urls import path
+from django.contrib.sitemaps.views import sitemap
+from django.urls import path, re_path
 
 from . import views
+from .sitemaps import ProfileSitemap, StaticViewSitemap
 
 app_name = "portfolio"
+sitemaps = {
+    "static": StaticViewSitemap,
+    "profiles": ProfileSitemap,
+}
 
 urlpatterns = [
     path("", views.frontend_shell, name="home"),
     path("discover/", views.frontend_shell, name="discover"),
     path("dashboard/", views.frontend_shell, name="dashboard"),
+    path("robots.txt", views.robots_txt_view, name="robots"),
+    path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
     path("auth/signup/", views.signup_view, name="signup"),
     path("auth/login/", views.login_view, name="login"),
     path("auth/logout/", views.logout_view, name="logout"),
@@ -15,6 +23,7 @@ urlpatterns = [
     path("api/search/", views.search_view, name="search"),
     path("api/profile/", views.profile_update_view, name="profile-update"),
     path("api/contacts/", views.contact_update_view, name="contact-update"),
+    path("api/follow/<str:username>/toggle/", views.follow_toggle_view, name="follow-toggle"),
     path("api/videos/create/", views.video_create_view, name="video-create"),
     path("api/videos/<uuid:video_id>/update/", views.video_update_view, name="video-update"),
     path("api/videos/<uuid:video_id>/delete/", views.video_delete_view, name="video-delete"),
@@ -25,4 +34,9 @@ urlpatterns = [
         name="video-play",
     ),
     path("<str:username>/", views.frontend_shell, name="public-profile"),
+    re_path(
+        r"^(?P<requested_path>(?!media/|static/).*)$",
+        views.friendly_not_found_view,
+        name="friendly-404",
+    ),
 ]

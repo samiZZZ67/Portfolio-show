@@ -1,0 +1,32 @@
+# Ignore local configuration and editor-specific files
+config/urls.py
+*.env
+.env
+
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django / Python local files
+db.sqlite3
+db.sqlite3-journal
+local_settings.py
+media/
+staticfiles/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE / editor directories and files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
