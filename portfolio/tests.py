@@ -6,7 +6,14 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .models import PortfolioVideo, VideoCategory, VideoContentType, VideoSourceType
+from .models import (
+    AccountRole,
+    FollowRelationship,
+    PortfolioVideo,
+    VideoCategory,
+    VideoContentType,
+    VideoSourceType,
+)
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
@@ -29,6 +36,8 @@ class PortfolioApiTests(TestCase):
         response = self.client.post(
             reverse("portfolio:signup"),
             {
+                "role": AccountRole.EDITOR,
+                "cname": "Studio Alpha",
                 "username": "EditorOne",
                 "password": "StrongPass123!",
                 "email": "editorone@example.com",
@@ -39,7 +48,38 @@ class PortfolioApiTests(TestCase):
         user = User.objects.get(username="EditorOne")
         self.assertEqual(user.email, "editorone@example.com")
         self.assertEqual(user.editor_profile.bio, "Fast turnaround editor.")
+        self.assertEqual(user.editor_profile.cname, "Studio Alpha")
+        self.assertEqual(user.editor_profile.role, AccountRole.EDITOR)
         self.assertEqual(self.client.session.get("_auth_user_id"), str(user.pk))
+
+    def test_cname_is_not_unique_but_username_is(self):
+        first = self.client.post(
+            reverse("portfolio:signup"),
+            {
+                "role": AccountRole.EDITOR,
+                "cname": "Shared Studio",
+                "username": "SharedOne",
+                "password": "StrongPass123!",
+                "email": "sharedone@example.com",
+                "bio": "First account.",
+            },
+        )
+        self.assertEqual(first.status_code, 201)
+        self.client.post(reverse("portfolio:logout"))
+
+        second = self.client.post(
+            reverse("portfolio:signup"),
+            {
+                "role": AccountRole.CLIENT,
+                "cname": "Shared Studio",
+                "username": "SharedTwo",
+                "password": "StrongPass123!",
+                "email": "sharedtwo@example.com",
+                "bio": "Second account.",
+            },
+        )
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(User.objects.filter(editor_profile__cname="Shared Studio").count(), 2)
 
     def test_login_rejects_invalid_credentials(self):
         User.objects.create_user(
@@ -90,6 +130,30 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, "At least one contact method is required.", status_code=400)
 
+    def test_contact_update_saves_other_links(self):
+        user = User.objects.create_user(
+            username="EditorLinks",
+            password="SecurePass123!",
+            email="editorlinks@example.com",
+        )
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse("portfolio:contact-update"),
+            {
+                "email": "editorlinks@example.com",
+                "telegram": "",
+                "whatsapp": "",
+                "phone": "",
+                "other_contacts_json": '[{"label":"LinkedIn","value":"linkedin.com/in/editorlinks"}]',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        user.editor_profile.refresh_from_db()
+        self.assertEqual(
+            user.editor_profile.other_contacts,
+            [{"label": "LinkedIn", "value": "https://linkedin.com/in/editorlinks"}],
+        )
+
     def test_bootstrap_returns_logged_in_editor_portfolio(self):
         user = User.objects.create_user(
             username="EditorPortfolio",
@@ -115,6 +179,109 @@ class PortfolioApiTests(TestCase):
             editor for editor in payload["editors"] if editor["username"] == "EditorPortfolio"
         )
         self.assertEqual(own_editor["videos"][0]["title"], "My First Reel")
+        self.assertEqual(own_editor["role"], AccountRole.EDITOR)
+
+    def test_profile_update_supports_username_cname_and_avatar_upload(self):
+        user = User.objects.create_user(
+            username="EditorRename",
+            password="SecurePass123!",
+            email="editorrename@example.com",
+        )
+        self.client.force_login(user)
+        avatar = SimpleUploadedFile("avatar.png", b"avatar-bytes", content_type="image/png")
+        response = self.client.post(
+            reverse("portfolio:profile-update"),
+            {
+                "username": "EditorRenamed",
+                "cname": "Renamed Studio",
+                "bio": "Updated bio",
+                "avatar_url": "",
+                "avatar_file": avatar,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.username, "EditorRenamed")
+        self.assertEqual(user.editor_profile.cname, "Renamed Studio")
+        self.assertTrue(user.editor_profile.avatar_file.name.endswith("avatar.png"))
+
+    def test_follow_toggle_requires_login_and_persists(self):
+        follower = User.objects.create_user(
+            username="FollowerUser",
+            password="SecurePass123!",
+            email="follower@example.com",
+        )
+        target = User.objects.create_user(
+            username="TargetUser",
+            password="SecurePass123!",
+            email="target@example.com",
+        )
+        target.editor_profile.phone = "+123456789"
+        target.editor_profile.save()
+
+        unauthenticated = self.client.post(
+            reverse("portfolio:follow-toggle", kwargs={"username": "TargetUser"})
+        )
+        self.assertEqual(unauthenticated.status_code, 401)
+
+        self.client.force_login(follower)
+        first = self.client.post(
+            reverse("portfolio:follow-toggle", kwargs={"username": "TargetUser"})
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertTrue(
+            FollowRelationship.objects.filter(
+                follower=follower.editor_profile,
+                followed=target.editor_profile,
+            ).exists()
+        )
+
+        second = self.client.post(
+            reverse("portfolio:follow-toggle", kwargs={"username": "TargetUser"})
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(
+            FollowRelationship.objects.filter(
+                follower=follower.editor_profile,
+                followed=target.editor_profile,
+            ).exists()
+        )
+
+    def test_client_accounts_cannot_create_videos(self):
+        user = User.objects.create_user(
+            username="ClientOnly",
+            password="SecurePass123!",
+            email="clientonly@example.com",
+        )
+        user.editor_profile.role = AccountRole.CLIENT
+        user.editor_profile.save(update_fields=["role"])
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse("portfolio:video-create"),
+            {
+                "title": "Should Fail",
+                "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "thumbnail_url": "",
+                "content_type": VideoContentType.LONG,
+                "category": VideoCategory.CORPORATE,
+                "duration": "3:45",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_friendly_not_found_page_replaces_default_404(self):
+        response = self.client.get("/does-not-exist/")
+        self.assertEqual(response.status_code, 404)
+        self.assertContains(response, "We couldn’t find that page.", status_code=404)
+
+    def test_sitemap_and_robots_routes_exist(self):
+        response = self.client.get(reverse("portfolio:sitemap"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<urlset", status_code=200)
+
+        robots = self.client.get(reverse("portfolio:robots"))
+        self.assertEqual(robots.status_code, 200)
+        self.assertContains(robots, "Sitemap:", status_code=200)
 
     def test_video_crud_flow(self):
         user = User.objects.create_user(
