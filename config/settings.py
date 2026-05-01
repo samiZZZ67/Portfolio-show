@@ -5,13 +5,25 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def csv_env(name, default=""):
+    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+
 SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-secret")
 DEBUG = os.environ.get("DEBUG", "False").lower() in {"1", "true", "yes"}
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.environ.get("ALLOWED_HOSTS", "portfolio-show.onrender.com").split(",")
-    if host.strip()
-]
+ALLOWED_HOSTS = list(
+    {
+        *csv_env("ALLOWED_HOSTS", "portfolio-show.onrender.com"),
+        os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip(),
+        "localhost",
+        "127.0.0.1",
+        "testserver",
+    }
+)
+CSRF_TRUSTED_ORIGINS = csv_env("CSRF_TRUSTED_ORIGINS")
+render_external_url = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+if render_external_url:
+    CSRF_TRUSTED_ORIGINS = list({*CSRF_TRUSTED_ORIGINS, render_external_url})
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
