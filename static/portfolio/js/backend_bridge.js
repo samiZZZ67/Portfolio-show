@@ -12,6 +12,8 @@
     typeof window.openAddVideoModal === "function" ? window.openAddVideoModal : null;
   const originalEditVideo = typeof window.editVideo === "function" ? window.editVideo : null;
   const originalRenderProfile = typeof window.renderProfile === "function" ? window.renderProfile : null;
+  const originalRenderDiscoverResults =
+    typeof window.renderDiscoverResults === "function" ? window.renderDiscoverResults : null;
   const originalRenderDashboard =
     typeof window.renderDashboard === "function" ? window.renderDashboard : null;
 
@@ -27,6 +29,7 @@
     } else {
       localStorage.removeItem("ela_current_user");
     }
+    updateNavigationAuth();
   }
 
   function getCsrfToken() {
@@ -116,6 +119,17 @@
     return window.currentUser ? editorByUsername(window.currentUser) : null;
   }
 
+  function closeMobileMenuIfOpen() {
+    const mobileMenu = document.getElementById("mobileMenu");
+    if (
+      mobileMenu &&
+      mobileMenu.classList.contains("open") &&
+      typeof window.toggleMobileMenu === "function"
+    ) {
+      window.toggleMobileMenu();
+    }
+  }
+
   function openDashboardProfileEditor() {
     window.navigate("dashboard");
     window.__elaActiveDashboardTab = "profile";
@@ -159,6 +173,138 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function updateNavigationAuth() {
+    const desktopAccountLink = document.getElementById("desktopAccountLink");
+    const mobileAccountLink = document.getElementById("mobileAccountLink");
+    const desktopAuthActions = document.getElementById("desktopAuthActions");
+    const mobileAuthActions = document.getElementById("mobileAuthActions");
+    const viewer = currentViewerProfile();
+    const signedInLabel =
+      viewer && viewer.display_name && viewer.display_name !== viewer.username
+        ? `${viewer.display_name} (@${viewer.username})`
+        : window.currentUser
+          ? `@${window.currentUser}`
+          : "";
+
+    function bindClick(id, handler) {
+      const element = document.getElementById(id);
+      if (element) {
+        element.addEventListener("click", handler);
+      }
+    }
+
+    if (desktopAccountLink) {
+      desktopAccountLink.textContent = window.currentUser ? "Dashboard" : "Sign In";
+      desktopAccountLink.onclick = function () {
+        if (window.currentUser) {
+          window.navigate("dashboard");
+        } else {
+          window.openModal("loginModal");
+        }
+        return false;
+      };
+    }
+
+    if (mobileAccountLink) {
+      mobileAccountLink.textContent = window.currentUser ? "Dashboard" : "Sign In";
+      mobileAccountLink.onclick = function () {
+        closeMobileMenuIfOpen();
+        if (window.currentUser) {
+          window.navigate("dashboard");
+        } else {
+          window.openModal("loginModal");
+        }
+        return false;
+      };
+    }
+
+    if (desktopAuthActions) {
+      if (window.currentUser) {
+        desktopAuthActions.innerHTML =
+          `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">` +
+          `<div style="padding:8px 12px;border:1px solid var(--border);border-radius:999px;color:var(--text-secondary);font-size:0.82rem;">` +
+          `Signed in as <strong style="color:var(--text-primary);">${escapeHtml(signedInLabel)}</strong>` +
+          `</div>` +
+          `<button type="button" class="btn-secondary btn-sm" id="desktopMyProfileBtn">` +
+          `<i class="fas fa-id-badge"></i> My Profile</button>` +
+          `<button type="button" class="btn-primary btn-sm" id="desktopLogoutBtn">` +
+          `<i class="fas fa-sign-out-alt"></i> Logout</button>` +
+          `</div>`;
+        bindClick("desktopMyProfileBtn", function () {
+          window.navigate("profile", window.currentUser);
+        });
+        bindClick("desktopLogoutBtn", function () {
+          window.logout();
+        });
+      } else {
+        desktopAuthActions.innerHTML =
+          '<button type="button" class="btn-primary btn-sm" id="desktopSignupBtn">' +
+          '<i class="fas fa-user-plus"></i> Sign Up</button>';
+        bindClick("desktopSignupBtn", function () {
+          window.openModal("signupModal");
+        });
+      }
+    }
+
+    if (mobileAuthActions) {
+      if (window.currentUser) {
+        mobileAuthActions.innerHTML =
+          `<div style="display:flex;flex-direction:column;gap:12px;">` +
+          `<div style="padding:12px 14px;border:1px solid var(--border);border-radius:16px;color:var(--text-secondary);font-size:0.9rem;text-align:center;">` +
+          `Signed in as <strong style="color:var(--text-primary);">${escapeHtml(signedInLabel)}</strong>` +
+          `</div>` +
+          `<button type="button" class="btn-secondary" id="mobileMyProfileBtn" style="justify-content:center;">` +
+          `<i class="fas fa-id-badge"></i> My Profile</button>` +
+          `<button type="button" class="btn-primary" id="mobileLogoutBtn" style="justify-content:center;">` +
+          `<i class="fas fa-sign-out-alt"></i> Logout</button>` +
+          `</div>`;
+        bindClick("mobileMyProfileBtn", function () {
+          closeMobileMenuIfOpen();
+          window.navigate("profile", window.currentUser);
+        });
+        bindClick("mobileLogoutBtn", function () {
+          closeMobileMenuIfOpen();
+          window.logout();
+        });
+      } else {
+        mobileAuthActions.innerHTML =
+          '<button type="button" class="btn-primary" id="mobileSignupBtn" style="justify-content:center;">' +
+          '<i class="fas fa-user-plus"></i> Sign Up</button>';
+        bindClick("mobileSignupBtn", function () {
+          closeMobileMenuIfOpen();
+          window.openModal("signupModal");
+        });
+      }
+    }
+  }
+
+  function highlightSignedInDiscoverCards(editors) {
+    const container = document.getElementById("discoverResults");
+    if (!container || !Array.isArray(editors) || !window.currentUser) {
+      return;
+    }
+
+    Array.from(container.children).forEach((card, index) => {
+      const editor = editors[index];
+      if (!editor || editor.username !== window.currentUser) {
+        return;
+      }
+
+      card.style.outline = "2px solid var(--accent)";
+      card.style.outlineOffset = "2px";
+      const metaBlock = card.querySelector(".editor-meta");
+      if (!metaBlock) {
+        return;
+      }
+
+      const marker = document.createElement("div");
+      marker.className = "own-account-badge";
+      marker.innerHTML =
+        '<span class="badge" style="margin-top:8px;font-size:0.68rem;">Signed in account</span>';
+      metaBlock.insertAdjacentElement("afterend", marker);
+    });
   }
 
   function renderCurrentContexts() {
@@ -558,6 +704,15 @@
         uploadBtn.addEventListener("click", openDashboardUploadModal);
         actionHost.appendChild(uploadBtn);
       }
+
+      const logoutBtn = document.createElement("button");
+      logoutBtn.type = "button";
+      logoutBtn.className = "btn-secondary";
+      logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Logout';
+      logoutBtn.addEventListener("click", function () {
+        window.logout();
+      });
+      actionHost.appendChild(logoutBtn);
     } else {
       const followBtn = document.createElement("button");
       followBtn.type = "button";
@@ -667,13 +822,7 @@
       }
       window.closeModal("signupModal");
       window.showToast(payload.message, "success");
-      window.navigate("dashboard");
-      window.__elaActiveDashboardTab = "profile";
-      setTimeout(() => {
-        if (typeof window.switchDashTab === "function") {
-          window.switchDashTab("profile");
-        }
-      }, 30);
+      window.navigate("profile", window.currentUser);
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -976,6 +1125,13 @@
       });
     });
   };
+
+  if (originalRenderDiscoverResults) {
+    window.renderDiscoverResults = function (editors) {
+      originalRenderDiscoverResults(editors);
+      highlightSignedInDiscoverCards(editors);
+    };
+  }
 
   if (originalRenderProfile) {
     window.renderProfile = function (username) {
