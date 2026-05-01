@@ -11,6 +11,7 @@ from .models import (
     FollowRelationship,
     PortfolioVideo,
     VideoReaction,
+    VideoStarRating,
     VideoCategory,
     VideoContentType,
     VideoReactionType,
@@ -115,6 +116,32 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["message"], "Login successful.")
         self.assertEqual(self.client.session.get("_auth_user_id"), str(user.pk))
+
+    def test_editor_profile_link_is_public_and_case_insensitive(self):
+        user = User.objects.create_user(
+            username="ElaShare",
+            password="CorrectHorse123!",
+            email="",
+        )
+        PortfolioVideo.objects.create(
+            profile=user.editor_profile,
+            title="Shareable Reel",
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+        )
+
+        response = self.client.get("/elashare/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "portfolio/js/backend_bridge.js", status_code=200)
+        self.assertContains(response, "ElaShare", status_code=200)
+
+        bootstrap = self.client.get(reverse("portfolio:bootstrap")).json()
+        self.assertTrue(
+            any(editor["username"] == "ElaShare" for editor in bootstrap["editors"])
+        )
 
     def test_search_endpoint_filters_existing_portfolios(self):
         response = self.client.get(
@@ -378,6 +405,7 @@ class PortfolioApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["message"], "Video uploaded successfully.")
         video = PortfolioVideo.objects.get(profile=user.editor_profile)
         self.assertEqual(video.video_source, VideoSourceType.UPLOAD)
         self.assertEqual(video.url, "")
@@ -416,7 +444,7 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(video.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
         self.assertTrue(video.uploaded_file.name.endswith("campaign.mov"))
 
-    def test_video_reactions_keep_star_separate_from_like(self):
+    def test_video_like_and_star_rating_flow(self):
         owner = User.objects.create_user(
             username="ReactionOwner",
             password="SecurePass123!",
@@ -441,50 +469,140 @@ class PortfolioApiTests(TestCase):
         )
         self.client.force_login(reactor)
 
-        star_response = self.client.post(
-            reverse(
-                "portfolio:video-react",
-                kwargs={"username": owner.username, "video_id": video.id},
-            ),
-            {"reaction_type": VideoReactionType.STAR},
-        )
-        self.assertEqual(star_response.status_code, 200)
-
         like_response = self.client.post(
             reverse(
-                "portfolio:video-react",
+                "portfolio:video-like",
                 kwargs={"username": owner.username, "video_id": video.id},
             ),
-            {"reaction_type": VideoReactionType.LIKE},
         )
         self.assertEqual(like_response.status_code, 200)
         self.assertEqual(
-            VideoReaction.objects.filter(video=video, profile=reactor.editor_profile).count(),
-            2,
+            VideoReaction.objects.filter(
+                video=video,
+                profile=reactor.editor_profile,
+                reaction_type=VideoReactionType.LIKE,
+            ).count(),
+            1,
         )
 
-        payload = like_response.json()
+        unlike_response = self.client.post(
+            reverse(
+                "portfolio:video-like",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+        )
+        self.assertEqual(unlike_response.status_code, 200)
+        self.assertEqual(
+            VideoReaction.objects.filter(
+                video=video,
+                profile=reactor.editor_profile,
+                reaction_type=VideoReactionType.LIKE,
+            ).count(),
+            0,
+        )
+
+        relike_response = self.client.post(
+            reverse(
+                "portfolio:video-like",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+        )
+        self.assertEqual(relike_response.status_code, 200)
+
+        rating_response = self.client.post(
+            reverse(
+                "portfolio:video-rate",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+            {"rating": 5},
+        )
+        self.assertEqual(rating_response.status_code, 200)
+        self.assertEqual(
+            VideoStarRating.objects.filter(video=video, profile=reactor.editor_profile).count(),
+            1,
+        )
+        self.assertEqual(
+            VideoStarRating.objects.get(video=video, profile=reactor.editor_profile).rating,
+            5,
+        )
+
+        rerate_response = self.client.post(
+            reverse(
+                "portfolio:video-rate",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+            {"rating": 3},
+        )
+        self.assertEqual(rerate_response.status_code, 200)
+        self.assertEqual(
+            VideoStarRating.objects.filter(video=video, profile=reactor.editor_profile).count(),
+            1,
+        )
+        self.assertEqual(
+            VideoStarRating.objects.get(video=video, profile=reactor.editor_profile).rating,
+            3,
+        )
+
+        second_reactor = User.objects.create_user(
+            username="SecondReactor",
+            password="SecurePass123!",
+            email="secondreactor@example.com",
+        )
+        self.client.force_login(second_reactor)
+        second_rating_response = self.client.post(
+            reverse(
+                "portfolio:video-rate",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+            {"rating": 5},
+        )
+        self.assertEqual(second_rating_response.status_code, 200)
+
+        payload = second_rating_response.json()
         owner_payload = next(
             editor for editor in payload["editors"] if editor["username"] == owner.username
         )
         video_payload = next(item for item in owner_payload["videos"] if item["id"] == str(video.id))
-        self.assertEqual(video_payload["reactions"][VideoReactionType.STAR], 1)
-        self.assertEqual(video_payload["reactions"][VideoReactionType.LIKE], 1)
-        self.assertIn(VideoReactionType.STAR, video_payload["viewer_reactions"])
-        self.assertIn(VideoReactionType.LIKE, video_payload["viewer_reactions"])
+        self.assertEqual(video_payload["likes_count"], 1)
+        self.assertFalse(video_payload["viewer_has_liked"])
+        self.assertEqual(video_payload["ratings_count"], 2)
+        self.assertEqual(video_payload["average_rating"], 4.0)
+        self.assertEqual(video_payload["viewer_rating"], 5)
 
-        unlike_response = self.client.post(
+    def test_video_like_and_rating_require_login(self):
+        owner = User.objects.create_user(
+            username="ProtectedOwner",
+            password="SecurePass123!",
+            email="protectedowner@example.com",
+        )
+        owner.editor_profile.phone = "+251900000005"
+        owner.editor_profile.save(update_fields=["phone"])
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Protected Reel",
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+        )
+
+        like_response = self.client.post(
             reverse(
-                "portfolio:video-react",
+                "portfolio:video-like",
                 kwargs={"username": owner.username, "video_id": video.id},
             ),
-            {"reaction_type": VideoReactionType.LIKE},
         )
-        self.assertEqual(unlike_response.status_code, 200)
-        self.assertEqual(
-            VideoReaction.objects.filter(video=video, profile=reactor.editor_profile).count(),
-            1,
+        self.assertEqual(like_response.status_code, 401)
+
+        rating_response = self.client.post(
+            reverse(
+                "portfolio:video-rate",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+            {"rating": 4},
         )
+        self.assertEqual(rating_response.status_code, 401)
 
     def test_uploaded_video_download_is_owner_only(self):
         owner = User.objects.create_user(

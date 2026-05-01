@@ -2,6 +2,7 @@ import uuid
 from urllib.parse import quote
 
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -106,6 +107,10 @@ class EditorProfile(models.Model):
 
     def has_contact_method(self):
         return any([self.user.email, self.telegram, self.whatsapp, self.phone, self.other_contacts])
+
+    @property
+    def is_public_profile(self):
+        return self.is_editor or self.has_contact_method()
 
     def setup_state(self):
         return {
@@ -233,3 +238,33 @@ class VideoReaction(models.Model):
 
     def __str__(self):
         return f"{self.profile.user.username} {self.reaction_type} {self.video_id}"
+
+
+class VideoStarRating(models.Model):
+    video = models.ForeignKey(
+        PortfolioVideo,
+        on_delete=models.CASCADE,
+        related_name="ratings",
+    )
+    profile = models.ForeignKey(
+        EditorProfile,
+        on_delete=models.CASCADE,
+        related_name="video_ratings",
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["video", "profile"],
+                name="unique_video_star_rating",
+            )
+        ]
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.profile.user.username} rated {self.video_id} as {self.rating}"

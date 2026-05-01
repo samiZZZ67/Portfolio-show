@@ -20,7 +20,11 @@ class ProfileSitemap(Sitemap):
     priority = 0.7
 
     def items(self):
-        return [profile for profile in EditorProfile.objects.select_related("user").all() if profile.has_contact_method()]
+        return [
+            profile
+            for profile in EditorProfile.objects.select_related("user").all()
+            if profile.is_public_profile
+        ]
 
     def location(self, item):
         return f"/{item.user.username}/"

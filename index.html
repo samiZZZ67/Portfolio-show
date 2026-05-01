@@ -1068,9 +1068,10 @@ textarea.input-field { resize: vertical; min-height: 100px; }
         <input type="text" class="input-field" id="videoDuration" placeholder="e.g. 3:45 or 0:30">
       </div>
       <input type="hidden" id="editVideoId" value="">
-      <button class="btn-primary" onclick="saveVideo()" style="width:100%;justify-content:center;padding:14px;">
+      <button class="btn-primary" id="videoSaveAction" onclick="saveVideo()" style="width:100%;justify-content:center;padding:14px;">
         <i class="fas fa-save"></i> <span id="videoSaveBtn">Save Video</span>
       </button>
+      <p id="videoUploadFeedback" style="display:none;font-size:0.82rem;color:var(--text-muted);margin-top:10px;"></p>
     </div>
   </div>
 </div>

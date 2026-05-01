@@ -19,12 +19,9 @@
     typeof window.renderDiscoverResults === "function" ? window.renderDiscoverResults : null;
   const originalRenderDashboard =
     typeof window.renderDashboard === "function" ? window.renderDashboard : null;
-  const REACTION_META = {
-    star: { emoji: "\u2B50", label: "Star" },
-    like: { emoji: "\uD83D\uDC4D", label: "Like" },
-    love: { emoji: "\u2764\uFE0F", label: "Love" },
-    fire: { emoji: "\uD83D\uDD25", label: "Fire" },
-  };
+  const LIKE_META = { emoji: "\uD83D\uDC4D", label: "Like" };
+  const STAR_FILLED = "\u2605";
+  const STAR_EMPTY = "\u2606";
 
   function syncAuthGlobals(user, role) {
     window.currentUser = user || null;
@@ -219,7 +216,12 @@
   }
 
   function openDashboardUploadModal() {
+    if (!window.currentUser) {
+      promptSignIn("Sign in to upload videos.");
+      return;
+    }
     if (!isCurrentUserEditor()) {
+      window.showToast("Only editor accounts can upload videos.", "error");
       return;
     }
     window.navigate("dashboard");
@@ -243,17 +245,58 @@
       .replace(/'/g, "&#39;");
   }
 
-  function reactionCounts(video) {
-    return {
-      star: Number(video?.reactions?.star || 0),
-      like: Number(video?.reactions?.like || 0),
-      love: Number(video?.reactions?.love || 0),
-      fire: Number(video?.reactions?.fire || 0),
-    };
+  function promptSignIn(message) {
+    window.showToast(message || "Please sign in to continue.", "error");
+    window.openModal("loginModal");
   }
 
-  function selectedReactions(video) {
-    return new Set(Array.isArray(video?.viewer_reactions) ? video.viewer_reactions : []);
+  function videoLikeCount(video) {
+    return Number(video?.likes_count ?? video?.like_count ?? 0);
+  }
+
+  function videoAverageRating(video) {
+    return Number(video?.average_rating || 0);
+  }
+
+  function videoRatingsCount(video) {
+    return Number(video?.ratings_count || 0);
+  }
+
+  function videoViewerRating(video) {
+    return Number(video?.viewer_rating || 0);
+  }
+
+  function videoViewerHasLiked(video) {
+    return Boolean(video?.viewer_has_liked);
+  }
+
+  function ratingLabel(count) {
+    return `${window.formatNumber(count)} rating${count === 1 ? "" : "s"}`;
+  }
+
+  function renderStaticStars(value, compact = false) {
+    const rounded = Math.max(0, Math.min(5, Math.round(Number(value) || 0)));
+    return (
+      `<span style="color:#f59e0b;font-size:${compact ? "0.8rem" : "0.92rem"};letter-spacing:0.04em;">` +
+      `${STAR_FILLED.repeat(rounded)}${STAR_EMPTY.repeat(5 - rounded)}` +
+      `</span>`
+    );
+  }
+
+  function renderAverageRatingMarkup(video, compact = false) {
+    const average = videoAverageRating(video);
+    const count = videoRatingsCount(video);
+    if (!count) {
+      return `<span style="color:var(--text-muted);font-size:${compact ? "0.76rem" : "0.82rem"};">No ratings yet</span>`;
+    }
+
+    return (
+      `<span style="display:inline-flex;align-items:center;gap:${compact ? "6px" : "8px"};flex-wrap:wrap;color:var(--text-muted);font-size:${compact ? "0.76rem" : "0.82rem"};">` +
+      renderStaticStars(average, compact) +
+      `<span><strong style="color:var(--text-primary);">${average.toFixed(1)}</strong>/5</span>` +
+      `<span>(${ratingLabel(count)})</span>` +
+      `</span>`
+    );
   }
 
   function videoCreatedAtMs(video) {
@@ -262,11 +305,10 @@
   }
 
   function featuredVideoComparator(a, b) {
-    const aCounts = reactionCounts(a);
-    const bCounts = reactionCounts(b);
     return (
-      bCounts.star - aCounts.star ||
-      bCounts.like - aCounts.like ||
+      videoAverageRating(b) - videoAverageRating(a) ||
+      videoRatingsCount(b) - videoRatingsCount(a) ||
+      videoLikeCount(b) - videoLikeCount(a) ||
       videoCreatedAtMs(b) - videoCreatedAtMs(a) ||
       (b.views || 0) - (a.views || 0)
     );
@@ -281,33 +323,31 @@
     const bVideos = featuredSortedVideos(b.videos || []);
     const aTop = aVideos[0] || null;
     const bTop = bVideos[0] || null;
-    const aTopCounts = reactionCounts(aTop);
-    const bTopCounts = reactionCounts(bTop);
     const aTotals = aVideos.reduce(
       (acc, video) => {
-        const counts = reactionCounts(video);
-        acc.star += counts.star;
-        acc.like += counts.like;
+        acc.rating += videoAverageRating(video);
+        acc.ratings += videoRatingsCount(video);
+        acc.likes += videoLikeCount(video);
         return acc;
       },
-      { star: 0, like: 0 }
+      { rating: 0, ratings: 0, likes: 0 }
     );
     const bTotals = bVideos.reduce(
       (acc, video) => {
-        const counts = reactionCounts(video);
-        acc.star += counts.star;
-        acc.like += counts.like;
+        acc.rating += videoAverageRating(video);
+        acc.ratings += videoRatingsCount(video);
+        acc.likes += videoLikeCount(video);
         return acc;
       },
-      { star: 0, like: 0 }
+      { rating: 0, ratings: 0, likes: 0 }
     );
 
     return (
-      bTopCounts.star - aTopCounts.star ||
-      bTopCounts.like - aTopCounts.like ||
+      featuredVideoComparator(aTop, bTop) ||
+      bTotals.rating - aTotals.rating ||
+      bTotals.ratings - aTotals.ratings ||
+      bTotals.likes - aTotals.likes ||
       videoCreatedAtMs(bTop) - videoCreatedAtMs(aTop) ||
-      bTotals.star - aTotals.star ||
-      bTotals.like - aTotals.like ||
       (b.videos || []).length - (a.videos || []).length ||
       String(a.display_name || a.username).localeCompare(String(b.display_name || b.username))
     );
@@ -366,56 +406,141 @@
     return { editor, video };
   }
 
-  async function toggleVideoReaction(username, videoId, reactionType) {
+  async function toggleVideoLike(username, videoId) {
     if (!window.currentUser) {
-      window.openModal("loginModal");
+      promptSignIn("Sign in to like videos.");
       return;
     }
 
     try {
       const payload = await postForm(
-        `/api/profiles/${encodeURIComponent(username)}/videos/${encodeURIComponent(videoId)}/react/`,
-        { reaction_type: reactionType }
+        `/api/profiles/${encodeURIComponent(username)}/videos/${encodeURIComponent(videoId)}/like/`,
+        {}
       );
       replaceState(payload);
       renderCurrentContexts();
+      window.showToast(payload.message, payload.liked ? "success" : "info");
     } catch (error) {
       window.showToast(error.message, "error");
     }
   }
 
-  function mountReactionButtons(host, username, video, compact = false) {
+  async function updateVideoRating(username, videoId, rating) {
+    if (!window.currentUser) {
+      promptSignIn("Sign in to rate videos.");
+      return;
+    }
+
+    try {
+      const payload = await postForm(
+        `/api/profiles/${encodeURIComponent(username)}/videos/${encodeURIComponent(videoId)}/rate/`,
+        { rating }
+      );
+      replaceState(payload);
+      renderCurrentContexts();
+      window.showToast(payload.message, "success");
+    } catch (error) {
+      window.showToast(error.message, "error");
+    }
+  }
+
+  function renderLikeSummaryMarkup(video, compact = false) {
+    const likes = videoLikeCount(video);
+    return (
+      `<span style="color:var(--text-muted);font-size:${compact ? "0.76rem" : "0.82rem"};">` +
+      `${LIKE_META.emoji} ${window.formatNumber(likes)} like${likes === 1 ? "" : "s"}` +
+      `</span>`
+    );
+  }
+
+  function mountLikeButton(host, username, video, compact = false) {
     if (!host || !video) {
       return;
     }
 
-    const counts = reactionCounts(video);
-    const selected = selectedReactions(video);
+    host.innerHTML = "";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = videoViewerHasLiked(video) ? "btn-primary" : "btn-secondary";
+    if (compact) {
+      button.classList.add("btn-sm");
+    }
+    button.style.minWidth = compact ? "auto" : "94px";
+    button.innerHTML =
+      `<span style="font-size:${compact ? "0.92rem" : "1rem"};">${LIKE_META.emoji}</span>` +
+      `<span>${window.formatNumber(videoLikeCount(video))}</span>`;
+    button.title = LIKE_META.label;
+    button.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleVideoLike(username, video.id);
+    });
+    host.appendChild(button);
+  }
+
+  function mountRatingButtons(host, username, video, compact = false, includeSummary = true) {
+    if (!host || !video) {
+      return;
+    }
+
+    const currentRating = videoViewerRating(video);
     host.innerHTML = "";
     host.style.display = "flex";
-    host.style.flexWrap = "wrap";
+    host.style.flexDirection = "column";
     host.style.gap = compact ? "6px" : "8px";
-    host.style.alignItems = "center";
 
-    Object.entries(REACTION_META).forEach(([reactionType, meta]) => {
+    if (includeSummary) {
+      const summary = document.createElement("div");
+      summary.innerHTML = renderAverageRatingMarkup(video, compact);
+      host.appendChild(summary);
+    }
+
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.flexWrap = "wrap";
+    row.style.gap = compact ? "4px" : "6px";
+    row.style.alignItems = "center";
+
+    for (let rating = 1; rating <= 5; rating += 1) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = selected.has(reactionType) ? "btn-primary" : "btn-secondary";
-      if (compact) {
-        button.classList.add("btn-sm");
-      }
-      button.style.minWidth = compact ? "auto" : "72px";
-      button.innerHTML =
-        `<span style="font-size:${compact ? "0.92rem" : "1rem"};">${meta.emoji}</span>` +
-        `<span>${window.formatNumber(counts[reactionType])}</span>`;
-      button.title = meta.label;
+      button.className = compact ? "btn-icon" : "btn-secondary btn-sm";
+      button.style.color = rating <= currentRating ? "#f59e0b" : "var(--text-muted)";
+      button.style.padding = compact ? "6px" : "8px 10px";
+      button.style.minWidth = compact ? "34px" : "46px";
+      button.innerHTML = `<span style="font-size:${compact ? "1rem" : "1.05rem"};">${
+        rating <= currentRating ? STAR_FILLED : STAR_EMPTY
+      }</span>`;
+      button.title = `Rate ${rating} star${rating === 1 ? "" : "s"}`;
       button.addEventListener("click", function (event) {
         event.preventDefault();
         event.stopPropagation();
-        toggleVideoReaction(username, video.id, reactionType);
+        updateVideoRating(username, video.id, rating);
       });
-      host.appendChild(button);
-    });
+      row.appendChild(button);
+    }
+
+    host.appendChild(row);
+  }
+
+  function renderVideoEngagement(host, username, video, compact = false, includeRatingSummary = true) {
+    if (!host || !video) {
+      return;
+    }
+
+    host.innerHTML = "";
+    host.style.display = "flex";
+    host.style.flexWrap = "wrap";
+    host.style.gap = compact ? "8px" : "12px";
+    host.style.alignItems = compact ? "center" : "flex-start";
+
+    const likeHost = document.createElement("div");
+    mountLikeButton(likeHost, username, video, compact);
+    host.appendChild(likeHost);
+
+    const ratingHost = document.createElement("div");
+    mountRatingButtons(ratingHost, username, video, compact, includeRatingSummary);
+    host.appendChild(ratingHost);
   }
 
   function renderPlayerActions(editor, video) {
@@ -429,12 +554,13 @@
       return;
     }
 
-    const reactionHost = document.createElement("div");
-    reactionHost.style.display = "flex";
-    reactionHost.style.flexWrap = "wrap";
-    reactionHost.style.gap = "8px";
-    mountReactionButtons(reactionHost, editor.username, video);
-    host.appendChild(reactionHost);
+    const engagementHost = document.createElement("div");
+    engagementHost.style.display = "flex";
+    engagementHost.style.flexWrap = "wrap";
+    engagementHost.style.gap = "12px";
+    engagementHost.style.alignItems = "center";
+    renderVideoEngagement(engagementHost, editor.username, video);
+    host.appendChild(engagementHost);
 
     if (video.has_uploaded_file) {
       if (video.can_download && video.download_url) {
@@ -532,7 +658,6 @@
         existing.remove();
       }
 
-      const counts = reactionCounts(video);
       const block = document.createElement("div");
       block.className = "ela-video-social";
       block.style.display = "flex";
@@ -540,16 +665,14 @@
       block.style.gap = "10px";
       block.style.marginTop = "12px";
       block.innerHTML =
-        `<div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text-muted);font-size:0.76rem;">` +
-        `<span>${REACTION_META.star.emoji} ${window.formatNumber(counts.star)}</span>` +
-        `<span>${REACTION_META.like.emoji} ${window.formatNumber(counts.like)}</span>` +
-        `<span>${REACTION_META.love.emoji} ${window.formatNumber(counts.love)}</span>` +
-        `<span>${REACTION_META.fire.emoji} ${window.formatNumber(counts.fire)}</span>` +
+        `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">` +
+        renderAverageRatingMarkup(video, true) +
+        renderLikeSummaryMarkup(video, true) +
         `</div>`;
 
-      const reactionsHost = document.createElement("div");
-      mountReactionButtons(reactionsHost, editor.username, video, true);
-      block.appendChild(reactionsHost);
+      const engagementHost = document.createElement("div");
+      renderVideoEngagement(engagementHost, editor.username, video, true, false);
+      block.appendChild(engagementHost);
       info.appendChild(block);
     });
   }
@@ -778,6 +901,39 @@
       return "Current local upload is saved. Choose another file to replace it.";
     }
     return "Choose a local video file to upload.";
+  }
+
+  function videoUploadFeedbackElement() {
+    return document.getElementById("videoUploadFeedback");
+  }
+
+  function setVideoUploadFeedback(message, tone = "muted") {
+    const feedback = videoUploadFeedbackElement();
+    if (!feedback) {
+      return;
+    }
+
+    feedback.textContent = message || "";
+    feedback.style.display = message ? "block" : "none";
+    feedback.style.color =
+      tone === "error" ? "var(--accent)" : tone === "success" ? "#16a34a" : "var(--text-muted)";
+  }
+
+  function setVideoSaveButtonLoading(isLoading) {
+    const button = document.getElementById("videoSaveAction");
+    if (!button) {
+      return;
+    }
+
+    const isEditing = Boolean(document.getElementById("editVideoId")?.value);
+    button.disabled = isLoading;
+    button.style.opacity = isLoading ? "0.7" : "";
+    button.style.cursor = isLoading ? "wait" : "";
+    button.innerHTML = isLoading
+      ? `<i class="fas fa-spinner fa-spin"></i> <span id="videoSaveBtn">${
+          isEditing ? "Saving..." : "Uploading..."
+        }</span>`
+      : `<i class="fas fa-save"></i> <span id="videoSaveBtn">${isEditing ? "Update Video" : "Save Video"}</span>`;
   }
 
   function updateVideoSourceUi(mode) {
@@ -1353,6 +1509,15 @@
   };
 
   window.saveVideo = async function () {
+    if (!window.currentUser) {
+      promptSignIn("Sign in to upload videos.");
+      return;
+    }
+    if (!isCurrentUserEditor()) {
+      window.showToast("Only editor accounts can upload videos.", "error");
+      return;
+    }
+
     const editId = document.getElementById("editVideoId").value;
     const endpoint = editId
       ? `/api/videos/${encodeURIComponent(editId)}/update/`
@@ -1361,6 +1526,9 @@
     const sourceMode = document.getElementById("videoSourceMode")
       ? document.getElementById("videoSourceMode").value
       : "link";
+
+    setVideoSaveButtonLoading(true);
+    setVideoUploadFeedback(editId ? "Saving your video details..." : "Uploading your video...", "muted");
 
     try {
       const formData = new FormData();
@@ -1378,6 +1546,7 @@
       const payload = await postMultipartForm(endpoint, formData);
 
       replaceState(payload);
+      setVideoUploadFeedback(payload.message || "Video uploaded successfully.", "success");
       window.closeModal("addVideoModal");
       resetVideoSourceControls("link");
       renderCurrentContexts();
@@ -1387,7 +1556,14 @@
         payload.video_id || editId
       );
     } catch (error) {
-      window.showToast(error.message, "error");
+      const message = error.message || "Upload failed.";
+      setVideoUploadFeedback(message, "error");
+      window.showToast(message, "error");
+    } finally {
+      setVideoSaveButtonLoading(false);
+      if (!document.getElementById("addVideoModal")?.classList.contains("show")) {
+        setVideoUploadFeedback("", "muted");
+      }
     }
   };
 
@@ -1410,6 +1586,7 @@
       });
       replaceState(payload);
       renderCurrentContexts();
+      window.showToast(payload.message, "success");
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -1581,7 +1758,6 @@
         .map((editor) => {
           const rankedVideos = featuredSortedVideos(editor.videos || []);
           const topVideo = rankedVideos[0] || editor.videos[0];
-          const counts = reactionCounts(topVideo);
           const totalViews = (editor.videos || []).reduce((sum, video) => sum + (video.views || 0), 0);
           const displayName = editor.display_name || editor.username;
 
@@ -1607,8 +1783,9 @@
             `<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">` +
             `<span style="color:var(--text-muted);font-size:0.8rem;"><i class="fas fa-video" style="margin-right:4px;"></i>${editor.videos.length} videos</span>` +
             `<span style="color:var(--text-muted);font-size:0.8rem;"><i class="fas fa-eye" style="margin-right:4px;"></i>${window.formatNumber(totalViews)}</span>` +
-            `<span style="color:var(--text-muted);font-size:0.8rem;">${REACTION_META.star.emoji} ${window.formatNumber(counts.star)} \u00B7 ${REACTION_META.like.emoji} ${window.formatNumber(counts.like)}</span>` +
+            renderLikeSummaryMarkup(topVideo, true) +
             `</div>` +
+            `<div style="margin-top:10px;">${renderAverageRatingMarkup(topVideo, true)}</div>` +
             `<div style="margin-top:12px;">${renderWorkStatsPill(editor, true)}</div>` +
             `${
               topVideo
@@ -1812,6 +1989,8 @@
     window.openAddVideoModal = function () {
       originalOpenAddVideoModal();
       resetVideoSourceControls("link");
+      setVideoSaveButtonLoading(false);
+      setVideoUploadFeedback("", "muted");
     };
   }
 
@@ -1819,6 +1998,8 @@
     window.editVideo = function (videoId) {
       originalEditVideo(videoId);
       ensureVideoSourceControls();
+      setVideoSaveButtonLoading(false);
+      setVideoUploadFeedback("", "muted");
       const editor = editorByUsername(window.currentUser);
       const video = editor ? editor.videos.find((item) => item.id === videoId) : null;
       if (!video) {

@@ -24,6 +24,7 @@ from .models import (
     PortfolioVideo,
     VideoReaction,
     VideoReactionType,
+    VideoStarRating,
 )
 
 FRONTEND_SOURCE = Path(settings.BASE_DIR) / "index.html"
@@ -32,9 +33,6 @@ DEFAULT_EDITORS_PATTERN = re.compile(
     re.DOTALL,
 )
 TITLE_PATTERN = re.compile(r"<title>.*?</title>", re.DOTALL | re.IGNORECASE)
-REACTION_TYPES = tuple(choice for choice, _ in VideoReactionType.choices)
-
-
 def json_error_response(form, status=400):
     errors = form.errors.get_json_data()
     message = "Please correct the highlighted fields."
@@ -108,6 +106,10 @@ def profile_queryset():
                 "videos__reactions",
                 queryset=VideoReaction.objects.select_related("profile__user").order_by("created_at"),
             ),
+            Prefetch(
+                "videos__ratings",
+                queryset=VideoStarRating.objects.select_related("profile__user").order_by("created_at"),
+            ),
         )
     )
 
@@ -121,11 +123,15 @@ def viewer_profile(request):
 def visible_profile(profile, request):
     if request.user.is_authenticated and profile.user_id == request.user.id:
         return True
-    return profile.has_contact_method()
+    return profile.is_public_profile
 
 
 def visible_profiles(request):
     return [profile for profile in profile_queryset() if visible_profile(profile, request)]
+
+
+def find_profile_by_username(username):
+    return profile_queryset().filter(user__username__iexact=username).first()
 
 
 def profile_avatar_src(profile):
@@ -134,18 +140,38 @@ def profile_avatar_src(profile):
     return profile.avatar
 
 
-def reaction_summary(video, current_profile=None):
-    counts = {reaction_type: 0 for reaction_type in REACTION_TYPES}
-    viewer_reactions = []
+def like_summary(video, current_profile=None):
+    likes_count = 0
+    viewer_has_liked = False
     for reaction in video.reactions.all():
-        counts[reaction.reaction_type] = counts.get(reaction.reaction_type, 0) + 1
+        if reaction.reaction_type != VideoReactionType.LIKE:
+            continue
+        likes_count += 1
         if current_profile and reaction.profile_id == current_profile.id:
-            viewer_reactions.append(reaction.reaction_type)
-    return counts, sorted(set(viewer_reactions))
+            viewer_has_liked = True
+    return likes_count, viewer_has_liked
+
+
+def rating_summary(video, current_profile=None):
+    ratings_total = 0
+    ratings_count = 0
+    viewer_rating = 0
+    for star_rating in video.ratings.all():
+        ratings_total += star_rating.rating
+        ratings_count += 1
+        if current_profile and star_rating.profile_id == current_profile.id:
+            viewer_rating = star_rating.rating
+
+    average_rating = round(ratings_total / ratings_count, 1) if ratings_count else 0.0
+    return average_rating, ratings_count, viewer_rating
 
 
 def serialize_video(video, current_profile=None):
-    reactions, viewer_reactions = reaction_summary(video, current_profile=current_profile)
+    likes_count, viewer_has_liked = like_summary(video, current_profile=current_profile)
+    average_rating, ratings_count, viewer_rating = rating_summary(
+        video,
+        current_profile=current_profile,
+    )
     can_download = bool(
         current_profile and current_profile.user_id == video.profile.user_id and video.has_uploaded_file
     )
@@ -183,10 +209,12 @@ def serialize_video(video, current_profile=None):
         "duration": video.duration,
         "views": video.views,
         "created_at": video.created_at.isoformat(),
-        "reactions": reactions,
-        "viewer_reactions": viewer_reactions,
-        "star_count": reactions[VideoReactionType.STAR],
-        "like_count": reactions[VideoReactionType.LIKE],
+        "likes_count": likes_count,
+        "like_count": likes_count,
+        "viewer_has_liked": viewer_has_liked,
+        "average_rating": average_rating,
+        "ratings_count": ratings_count,
+        "viewer_rating": viewer_rating,
     }
 
 
@@ -223,7 +251,7 @@ def serialize_profile(profile, following_ids=None, current_profile=None):
         "clients_served": profile.clients_served,
         "completed_projects": profile.completed_projects,
         "work_stats_label": (
-            f"{profile.clients_served} client{'s' if profile.clients_served != 1 else ''} • "
+            f"{profile.clients_served} client{'s' if profile.clients_served != 1 else ''} | "
             f"{profile.completed_projects} project{'s' if profile.completed_projects != 1 else ''}"
         ),
         "setup": setup_state,
@@ -397,14 +425,14 @@ def get_owned_video(user, video_id):
 
 
 def get_visible_video(request, username, video_id):
-    profile = profile_queryset().filter(user__username=username).first()
+    profile = find_profile_by_username(username)
     if not profile or not visible_profile(profile, request):
         raise Http404("Profile not found.")
     return get_object_or_404(profile.videos, pk=video_id)
 
 
 def get_visible_profile(request, username):
-    profile = profile_queryset().filter(user__username=username).first()
+    profile = find_profile_by_username(username)
     if not profile or not visible_profile(profile, request):
         raise Http404("Profile not found.")
     return profile
@@ -427,7 +455,7 @@ def friendly_not_found_response(request, requested_path="", status=404):
 def frontend_shell(request, username=None):
     requested_profile = None
     if username:
-        requested_profile = profile_queryset().filter(user__username=username).first()
+        requested_profile = find_profile_by_username(username)
         if not requested_profile or not visible_profile(requested_profile, request):
             return friendly_not_found_response(request, requested_path=f"/{username}/", status=404)
     return HttpResponse(render_frontend_html(request, requested_profile=requested_profile))
@@ -547,7 +575,7 @@ def contact_update_view(request):
 @api_login_required
 def follow_toggle_view(request, username):
     follower = request.user.editor_profile
-    followed = get_object_or_404(EditorProfile, user__username=username)
+    followed = get_object_or_404(EditorProfile, user__username__iexact=username)
 
     if follower.pk == followed.pk:
         return JsonResponse(
@@ -668,41 +696,82 @@ def video_play_view(request, username, video_id):
 @require_POST
 @api_login_required
 @transaction.atomic
-def video_reaction_toggle_view(request, username, video_id):
+def video_like_toggle_view(request, username, video_id):
     video = get_visible_video(request, username, video_id)
-    reaction_type = request.POST.get("reaction_type", "").strip()
-    if reaction_type not in REACTION_TYPES:
-        return JsonResponse(
-            {
-                "ok": False,
-                "message": "Unsupported reaction type.",
-            },
-            status=400,
-        )
-
     viewer = request.user.editor_profile
     existing = VideoReaction.objects.filter(
         video=video,
         profile=viewer,
-        reaction_type=reaction_type,
+        reaction_type=VideoReactionType.LIKE,
     )
     if existing.exists():
         existing.delete()
-        message = f"Removed {reaction_type} reaction."
+        message = "Like removed."
+        liked = False
     else:
         VideoReaction.objects.create(
             video=video,
             profile=viewer,
-            reaction_type=reaction_type,
+            reaction_type=VideoReactionType.LIKE,
         )
-        message = f"Added {reaction_type} reaction."
+        message = "Video liked."
+        liked = True
 
     return refresh_payload_response(
         request,
         message,
         extra={
             "video_id": str(video.id),
-            "reaction_type": reaction_type,
+            "liked": liked,
+        },
+    )
+
+
+@require_POST
+@api_login_required
+@transaction.atomic
+def video_rating_update_view(request, username, video_id):
+    video = get_visible_video(request, username, video_id)
+    try:
+        rating = int(request.POST.get("rating", ""))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Choose a star rating from 1 to 5.",
+            },
+            status=400,
+        )
+
+    if rating < 1 or rating > 5:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Choose a star rating from 1 to 5.",
+            },
+            status=400,
+        )
+
+    viewer = request.user.editor_profile
+    existing = VideoStarRating.objects.filter(video=video, profile=viewer).first()
+    if existing:
+        existing.rating = rating
+        existing.save(update_fields=["rating", "updated_at"])
+        message = f"Updated your rating to {rating} star{'s' if rating != 1 else ''}."
+    else:
+        VideoStarRating.objects.create(
+            video=video,
+            profile=viewer,
+            rating=rating,
+        )
+        message = f"Rated this video {rating} star{'s' if rating != 1 else ''}."
+
+    return refresh_payload_response(
+        request,
+        message,
+        extra={
+            "video_id": str(video.id),
+            "rating": rating,
         },
     )
 

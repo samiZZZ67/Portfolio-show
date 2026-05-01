@@ -35,9 +35,19 @@ urlpatterns = [
         name="video-play",
     ),
     path(
+        "api/profiles/<str:username>/videos/<uuid:video_id>/like/",
+        views.video_like_toggle_view,
+        name="video-like",
+    ),
+    path(
         "api/profiles/<str:username>/videos/<uuid:video_id>/react/",
-        views.video_reaction_toggle_view,
+        views.video_like_toggle_view,
         name="video-react",
+    ),
+    path(
+        "api/profiles/<str:username>/videos/<uuid:video_id>/rate/",
+        views.video_rating_update_view,
+        name="video-rate",
     ),
     path(
         "api/profiles/<str:username>/videos/<uuid:video_id>/stream/",
