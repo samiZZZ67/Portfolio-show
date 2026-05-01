@@ -1,5 +1,6 @@
 import html
 import json
+import mimetypes
 import re
 from functools import wraps
 from pathlib import Path
@@ -8,7 +9,7 @@ from django.conf import settings
 from django.contrib.auth import login, logout
 from django.db import transaction
 from django.db.models import Count, F, Prefetch
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.templatetags.static import static
 from django.urls import reverse
@@ -16,7 +17,14 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import ContactForm, LoginForm, ProfileForm, SignUpForm, VideoForm, VideoMoveForm
-from .models import AccountRole, EditorProfile, FollowRelationship, PortfolioVideo
+from .models import (
+    AccountRole,
+    EditorProfile,
+    FollowRelationship,
+    PortfolioVideo,
+    VideoReaction,
+    VideoReactionType,
+)
 
 FRONTEND_SOURCE = Path(settings.BASE_DIR) / "index.html"
 DEFAULT_EDITORS_PATTERN = re.compile(
@@ -24,6 +32,7 @@ DEFAULT_EDITORS_PATTERN = re.compile(
     re.DOTALL,
 )
 TITLE_PATTERN = re.compile(r"<title>.*?</title>", re.DOTALL | re.IGNORECASE)
+REACTION_TYPES = tuple(choice for choice, _ in VideoReactionType.choices)
 
 
 def json_error_response(form, status=400):
@@ -94,7 +103,11 @@ def profile_queryset():
             Prefetch(
                 "videos",
                 queryset=PortfolioVideo.objects.order_by("sort_order", "created_at"),
-            )
+            ),
+            Prefetch(
+                "videos__reactions",
+                queryset=VideoReaction.objects.select_related("profile__user").order_by("created_at"),
+            ),
         )
     )
 
@@ -115,21 +128,65 @@ def visible_profiles(request):
     return [profile for profile in profile_queryset() if visible_profile(profile, request)]
 
 
-def serialize_video(video):
+def profile_avatar_src(profile):
+    if profile.avatar_file:
+        return reverse("portfolio:profile-avatar", kwargs={"username": profile.user.username})
+    return profile.avatar
+
+
+def reaction_summary(video, current_profile=None):
+    counts = {reaction_type: 0 for reaction_type in REACTION_TYPES}
+    viewer_reactions = []
+    for reaction in video.reactions.all():
+        counts[reaction.reaction_type] = counts.get(reaction.reaction_type, 0) + 1
+        if current_profile and reaction.profile_id == current_profile.id:
+            viewer_reactions.append(reaction.reaction_type)
+    return counts, sorted(set(viewer_reactions))
+
+
+def serialize_video(video, current_profile=None):
+    reactions, viewer_reactions = reaction_summary(video, current_profile=current_profile)
+    can_download = bool(
+        current_profile and current_profile.user_id == video.profile.user_id and video.has_uploaded_file
+    )
+    playback_url = video.url
+    if video.has_uploaded_file:
+        playback_url = reverse(
+            "portfolio:video-stream",
+            kwargs={
+                "username": video.profile.user.username,
+                "video_id": video.id,
+            },
+        )
+
     return {
         "id": str(video.id),
         "title": video.title,
         "url": video.url,
         "video_source": video.video_source,
-        "uploaded_file_url": video.uploaded_file.url if video.uploaded_file else "",
         "uploaded_file_name": video.uploaded_file.name.rsplit("/", 1)[-1] if video.uploaded_file else "",
         "has_uploaded_file": video.has_uploaded_file,
-        "playback_url": video.playback_url,
+        "playback_url": playback_url,
+        "download_url": reverse(
+            "portfolio:video-download",
+            kwargs={
+                "username": video.profile.user.username,
+                "video_id": video.id,
+            },
+        )
+        if can_download
+        else "",
+        "can_download": can_download,
         "thumb": video.thumbnail_url,
         "type": video.content_type,
         "category": video.category,
         "duration": video.duration,
         "views": video.views,
+        "created_at": video.created_at.isoformat(),
+        "reactions": reactions,
+        "viewer_reactions": viewer_reactions,
+        "star_count": reactions[VideoReactionType.STAR],
+        "like_count": reactions[VideoReactionType.LIKE],
     }
 
 
@@ -149,7 +206,7 @@ def serialize_profile(profile, following_ids=None, current_profile=None):
         "role": profile.role,
         "role_label": profile.get_role_display(),
         "bio": profile.bio or EditorProfile.default_bio,
-        "avatar": profile.avatar,
+        "avatar": profile_avatar_src(profile),
         "avatar_url": profile.avatar_url or "",
         "has_custom_avatar": profile.has_custom_avatar,
         "email": profile.user.email or "",
@@ -157,12 +214,18 @@ def serialize_profile(profile, following_ids=None, current_profile=None):
         "whatsapp": profile.whatsapp or "",
         "phone": profile.phone or "",
         "other_contacts": profile.other_contacts or [],
-        "videos": [serialize_video(video) for video in videos],
+        "videos": [serialize_video(video, current_profile=current_profile) for video in videos],
         "followers_count": getattr(profile, "followers_total", profile.follower_relationships.count()),
         "following_count": getattr(profile, "following_total", profile.following_relationships.count()),
         "is_following": bool(following_ids and profile.id in following_ids),
         "can_edit": bool(current_profile and current_profile.id == profile.id),
         "public_url": f"/{profile.user.username}/",
+        "clients_served": profile.clients_served,
+        "completed_projects": profile.completed_projects,
+        "work_stats_label": (
+            f"{profile.clients_served} client{'s' if profile.clients_served != 1 else ''} • "
+            f"{profile.completed_projects} project{'s' if profile.completed_projects != 1 else ''}"
+        ),
         "setup": setup_state,
     }
 
@@ -236,7 +299,7 @@ def build_seo_injection(request, requested_profile=None):
             "alternateName": requested_profile.user.username,
             "description": description,
             "url": canonical,
-            "image": request.build_absolute_uri(requested_profile.avatar),
+            "image": request.build_absolute_uri(profile_avatar_src(requested_profile)),
         }
     elif request.path == "/discover/":
         title = "Discover Editors | Ela-sam Portfolio Show"
@@ -333,6 +396,20 @@ def get_owned_video(user, video_id):
     return get_object_or_404(profile.videos, pk=video_id)
 
 
+def get_visible_video(request, username, video_id):
+    profile = profile_queryset().filter(user__username=username).first()
+    if not profile or not visible_profile(profile, request):
+        raise Http404("Profile not found.")
+    return get_object_or_404(profile.videos, pk=video_id)
+
+
+def get_visible_profile(request, username):
+    profile = profile_queryset().filter(user__username=username).first()
+    if not profile or not visible_profile(profile, request):
+        raise Http404("Profile not found.")
+    return profile
+
+
 def friendly_not_found_response(request, requested_path="", status=404):
     return render(
         request,
@@ -426,7 +503,7 @@ def login_view(request):
     login(request, form.get_user())
     return refresh_payload_response(
         request,
-        f"Welcome back, {request.user.editor_profile.display_name}!",
+        "Login successful.",
     )
 
 
@@ -446,7 +523,7 @@ def profile_update_view(request):
     form.save()
     return refresh_payload_response(
         request,
-        "Profile updated.",
+        "Portfolio updated successfully.",
         extra={"updated_username": request.user.username},
     )
 
@@ -459,7 +536,11 @@ def contact_update_view(request):
     if not form.is_valid():
         return json_error_response(form)
     form.save(request.user, profile)
-    return refresh_payload_response(request, "Contact methods saved.")
+    return refresh_payload_response(
+        request,
+        "Contact methods saved successfully.",
+        extra={"updated_username": request.user.username},
+    )
 
 
 @require_POST
@@ -502,8 +583,8 @@ def video_create_view(request):
     video.save()
     return refresh_payload_response(
         request,
-        "Video added successfully.",
-        extra={"video_id": str(video.id)},
+        "Video uploaded successfully.",
+        extra={"video_id": str(video.id), "profile_username": request.user.username},
         status=201,
     )
 
@@ -516,7 +597,11 @@ def video_update_view(request, video_id):
     if not form.is_valid():
         return json_error_response(form)
     form.save()
-    return refresh_payload_response(request, "Video updated successfully.")
+    return refresh_payload_response(
+        request,
+        "Video updated successfully.",
+        extra={"video_id": str(video.id), "profile_username": request.user.username},
+    )
 
 
 @require_POST
@@ -567,21 +652,111 @@ def video_move_view(request, video_id):
 @require_POST
 @transaction.atomic
 def video_play_view(request, username, video_id):
-    profile = profile_queryset().filter(user__username=username).first()
-    if not profile or not visible_profile(profile, request):
-        raise Http404("Profile not found.")
-
-    video = get_object_or_404(profile.videos, pk=video_id)
+    video = get_visible_video(request, username, video_id)
     PortfolioVideo.objects.filter(pk=video.pk).update(views=F("views") + 1)
     video.refresh_from_db(fields=["views"])
     return refresh_payload_response(
         request,
         "View recorded.",
         extra={
-            "video": serialize_video(video),
+            "video": serialize_video(video, current_profile=viewer_profile(request)),
             "profile_username": username,
         },
     )
+
+
+@require_POST
+@api_login_required
+@transaction.atomic
+def video_reaction_toggle_view(request, username, video_id):
+    video = get_visible_video(request, username, video_id)
+    reaction_type = request.POST.get("reaction_type", "").strip()
+    if reaction_type not in REACTION_TYPES:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Unsupported reaction type.",
+            },
+            status=400,
+        )
+
+    viewer = request.user.editor_profile
+    existing = VideoReaction.objects.filter(
+        video=video,
+        profile=viewer,
+        reaction_type=reaction_type,
+    )
+    if existing.exists():
+        existing.delete()
+        message = f"Removed {reaction_type} reaction."
+    else:
+        VideoReaction.objects.create(
+            video=video,
+            profile=viewer,
+            reaction_type=reaction_type,
+        )
+        message = f"Added {reaction_type} reaction."
+
+    return refresh_payload_response(
+        request,
+        message,
+        extra={
+            "video_id": str(video.id),
+            "reaction_type": reaction_type,
+        },
+    )
+
+
+@require_GET
+def video_stream_view(request, username, video_id):
+    video = get_visible_video(request, username, video_id)
+    if not video.has_uploaded_file:
+        raise Http404("Uploaded video not found.")
+
+    guessed_type = mimetypes.guess_type(video.uploaded_file.name)[0] or "video/mp4"
+    response = FileResponse(video.uploaded_file.open("rb"), content_type=guessed_type)
+    response["Content-Disposition"] = (
+        f'inline; filename="{video.uploaded_file.name.rsplit("/", 1)[-1]}"'
+    )
+    response["Accept-Ranges"] = "bytes"
+    return response
+
+
+@require_GET
+def profile_avatar_view(request, username):
+    profile = get_visible_profile(request, username)
+    if not profile.avatar_file:
+        raise Http404("Avatar not found.")
+
+    guessed_type = mimetypes.guess_type(profile.avatar_file.name)[0] or "image/jpeg"
+    response = FileResponse(profile.avatar_file.open("rb"), content_type=guessed_type)
+    response["Content-Disposition"] = (
+        f'inline; filename="{profile.avatar_file.name.rsplit("/", 1)[-1]}"'
+    )
+    return response
+
+
+@require_GET
+@api_login_required
+def video_download_view(request, username, video_id):
+    video = get_visible_video(request, username, video_id)
+    if request.user.id != video.profile.user_id:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Only the video owner can download this file.",
+            },
+            status=403,
+        )
+    if not video.has_uploaded_file:
+        raise Http404("Uploaded video not found.")
+
+    guessed_type = mimetypes.guess_type(video.uploaded_file.name)[0] or "application/octet-stream"
+    response = FileResponse(video.uploaded_file.open("rb"), content_type=guessed_type)
+    response["Content-Disposition"] = (
+        f'attachment; filename="{video.uploaded_file.name.rsplit("/", 1)[-1]}"'
+    )
+    return response
 
 
 @require_GET

@@ -11,11 +11,20 @@
   const originalOpenAddVideoModal =
     typeof window.openAddVideoModal === "function" ? window.openAddVideoModal : null;
   const originalEditVideo = typeof window.editVideo === "function" ? window.editVideo : null;
+  const originalRenderFeatured = typeof window.renderFeatured === "function" ? window.renderFeatured : null;
   const originalRenderProfile = typeof window.renderProfile === "function" ? window.renderProfile : null;
+  const originalRenderProfileVideos =
+    typeof window.renderProfileVideos === "function" ? window.renderProfileVideos : null;
   const originalRenderDiscoverResults =
     typeof window.renderDiscoverResults === "function" ? window.renderDiscoverResults : null;
   const originalRenderDashboard =
     typeof window.renderDashboard === "function" ? window.renderDashboard : null;
+  const REACTION_META = {
+    star: { emoji: "\u2B50", label: "Star" },
+    like: { emoji: "\uD83D\uDC4D", label: "Like" },
+    love: { emoji: "\u2764\uFE0F", label: "Love" },
+    fire: { emoji: "\uD83D\uDD25", label: "Fire" },
+  };
 
   function replaceState(payload) {
     const editors = Array.isArray(payload.editors) ? payload.editors : [];
@@ -30,6 +39,7 @@
       localStorage.removeItem("ela_current_user");
     }
     updateNavigationAuth();
+    refreshActivePlayerState();
   }
 
   function getCsrfToken() {
@@ -54,6 +64,10 @@
 
     const payload = await response.json();
     if (!response.ok) {
+      if (response.status === 401) {
+        replaceState({ editors: window.__elaEditors || [], current_user: null, current_user_role: null });
+        window.openModal("loginModal");
+      }
       throw new Error(payload.message || "Request failed.");
     }
     return payload;
@@ -72,6 +86,10 @@
 
     const payload = await response.json();
     if (!response.ok) {
+      if (response.status === 401) {
+        replaceState({ editors: window.__elaEditors || [], current_user: null, current_user_role: null });
+        window.openModal("loginModal");
+      }
       throw new Error(payload.message || "Request failed.");
     }
     return payload;
@@ -87,6 +105,10 @@
     });
     const payload = await response.json();
     if (!response.ok) {
+      if (response.status === 401) {
+        replaceState({ editors: window.__elaEditors || [], current_user: null, current_user_role: null });
+        window.openModal("loginModal");
+      }
       throw new Error(payload.message || "Request failed.");
     }
     return payload;
@@ -173,6 +195,342 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function reactionCounts(video) {
+    return {
+      star: Number(video?.reactions?.star || 0),
+      like: Number(video?.reactions?.like || 0),
+      love: Number(video?.reactions?.love || 0),
+      fire: Number(video?.reactions?.fire || 0),
+    };
+  }
+
+  function selectedReactions(video) {
+    return new Set(Array.isArray(video?.viewer_reactions) ? video.viewer_reactions : []);
+  }
+
+  function videoCreatedAtMs(video) {
+    const value = Date.parse(video?.created_at || "");
+    return Number.isNaN(value) ? 0 : value;
+  }
+
+  function featuredVideoComparator(a, b) {
+    const aCounts = reactionCounts(a);
+    const bCounts = reactionCounts(b);
+    return (
+      bCounts.star - aCounts.star ||
+      bCounts.like - aCounts.like ||
+      videoCreatedAtMs(b) - videoCreatedAtMs(a) ||
+      (b.views || 0) - (a.views || 0)
+    );
+  }
+
+  function featuredSortedVideos(videos) {
+    return [...(videos || [])].sort(featuredVideoComparator);
+  }
+
+  function featuredEditorComparator(a, b) {
+    const aVideos = featuredSortedVideos(a.videos || []);
+    const bVideos = featuredSortedVideos(b.videos || []);
+    const aTop = aVideos[0] || null;
+    const bTop = bVideos[0] || null;
+    const aTopCounts = reactionCounts(aTop);
+    const bTopCounts = reactionCounts(bTop);
+    const aTotals = aVideos.reduce(
+      (acc, video) => {
+        const counts = reactionCounts(video);
+        acc.star += counts.star;
+        acc.like += counts.like;
+        return acc;
+      },
+      { star: 0, like: 0 }
+    );
+    const bTotals = bVideos.reduce(
+      (acc, video) => {
+        const counts = reactionCounts(video);
+        acc.star += counts.star;
+        acc.like += counts.like;
+        return acc;
+      },
+      { star: 0, like: 0 }
+    );
+
+    return (
+      bTopCounts.star - aTopCounts.star ||
+      bTopCounts.like - aTopCounts.like ||
+      videoCreatedAtMs(bTop) - videoCreatedAtMs(aTop) ||
+      bTotals.star - aTotals.star ||
+      bTotals.like - aTotals.like ||
+      (b.videos || []).length - (a.videos || []).length ||
+      String(a.display_name || a.username).localeCompare(String(b.display_name || b.username))
+    );
+  }
+
+  function workStatsLabel(editor) {
+    return (
+      editor?.work_stats_label ||
+      `${Number(editor?.clients_served || 0)} clients \u2022 ${Number(editor?.completed_projects || 0)} projects`
+    );
+  }
+
+  function renderWorkStatsPill(editor, compact = false) {
+    const sizeClass = compact ? "btn-sm" : "";
+    return (
+      `<div class="btn-secondary ${sizeClass}" style="pointer-events:none;display:inline-flex;gap:8px;align-items:center;">` +
+      `<i class="fas fa-briefcase"></i>${escapeHtml(workStatsLabel(editor))}</div>`
+    );
+  }
+
+  function teardownPlayerModal() {
+    const container = document.getElementById("playerContainer");
+    if (container) {
+      Array.from(container.querySelectorAll("video")).forEach((node) => {
+        try {
+          node.pause();
+        } catch (error) {
+          void error;
+        }
+        node.removeAttribute("src");
+        node.load();
+      });
+      Array.from(container.querySelectorAll("iframe")).forEach((node) => {
+        node.src = "about:blank";
+      });
+      container.innerHTML = "";
+    }
+
+    const actions = document.getElementById("playerActions");
+    if (actions) {
+      actions.innerHTML = "";
+    }
+
+    window.__elaActivePlayerVideoId = null;
+    window.__elaActivePlayerUsername = null;
+  }
+
+  function activePlayerVideo() {
+    if (!window.__elaActivePlayerVideoId || !window.__elaActivePlayerUsername) {
+      return { editor: null, video: null };
+    }
+    const editor = editorByUsername(window.__elaActivePlayerUsername);
+    const video = editor
+      ? (editor.videos || []).find((item) => item.id === window.__elaActivePlayerVideoId) || null
+      : null;
+    return { editor, video };
+  }
+
+  async function toggleVideoReaction(username, videoId, reactionType) {
+    if (!window.currentUser) {
+      window.openModal("loginModal");
+      return;
+    }
+
+    try {
+      const payload = await postForm(
+        `/api/profiles/${encodeURIComponent(username)}/videos/${encodeURIComponent(videoId)}/react/`,
+        { reaction_type: reactionType }
+      );
+      replaceState(payload);
+      renderCurrentContexts();
+    } catch (error) {
+      window.showToast(error.message, "error");
+    }
+  }
+
+  function mountReactionButtons(host, username, video, compact = false) {
+    if (!host || !video) {
+      return;
+    }
+
+    const counts = reactionCounts(video);
+    const selected = selectedReactions(video);
+    host.innerHTML = "";
+    host.style.display = "flex";
+    host.style.flexWrap = "wrap";
+    host.style.gap = compact ? "6px" : "8px";
+    host.style.alignItems = "center";
+
+    Object.entries(REACTION_META).forEach(([reactionType, meta]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = selected.has(reactionType) ? "btn-primary" : "btn-secondary";
+      if (compact) {
+        button.classList.add("btn-sm");
+      }
+      button.style.minWidth = compact ? "auto" : "72px";
+      button.innerHTML =
+        `<span style="font-size:${compact ? "0.92rem" : "1rem"};">${meta.emoji}</span>` +
+        `<span>${window.formatNumber(counts[reactionType])}</span>`;
+      button.title = meta.label;
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleVideoReaction(username, video.id, reactionType);
+      });
+      host.appendChild(button);
+    });
+  }
+
+  function renderPlayerActions(editor, video) {
+    const host = document.getElementById("playerActions");
+    if (!host) {
+      return;
+    }
+
+    host.innerHTML = "";
+    if (!editor || !video) {
+      return;
+    }
+
+    const reactionHost = document.createElement("div");
+    reactionHost.style.display = "flex";
+    reactionHost.style.flexWrap = "wrap";
+    reactionHost.style.gap = "8px";
+    mountReactionButtons(reactionHost, editor.username, video);
+    host.appendChild(reactionHost);
+
+    if (video.has_uploaded_file) {
+      if (video.can_download && video.download_url) {
+        const downloadButton = document.createElement("button");
+        downloadButton.type = "button";
+        downloadButton.className = "btn-secondary btn-sm";
+        downloadButton.innerHTML = '<i class="fas fa-download"></i> Download';
+        downloadButton.addEventListener("click", function () {
+          window.location.assign(video.download_url);
+        });
+        host.appendChild(downloadButton);
+      } else {
+        const note = document.createElement("div");
+        note.style.color = "var(--text-secondary)";
+        note.style.fontSize = "0.8rem";
+        note.textContent = "Download locked. Contact the editor for access.";
+        host.appendChild(note);
+      }
+    }
+  }
+
+  function refreshActivePlayerState() {
+    const modal = document.getElementById("videoPlayerModal");
+    if (!modal || !modal.classList.contains("show")) {
+      return;
+    }
+
+    const { editor, video } = activePlayerVideo();
+    if (!editor || !video) {
+      teardownPlayerModal();
+      return;
+    }
+
+    const views = document.getElementById("playerViews");
+    if (views) {
+      views.textContent = `${window.formatNumber(video.views)} views`;
+    }
+    renderPlayerActions(editor, video);
+  }
+
+  function currentProfileVideos() {
+    const editor = editorByUsername(window.currentProfileUser);
+    if (!editor) {
+      return [];
+    }
+    let videos = (editor.videos || []).filter((video) => video.type === window.currentProfileTab);
+    if (window.currentProfileCat && window.currentProfileCat !== "all") {
+      videos = videos.filter((video) => video.category === window.currentProfileCat);
+    }
+    return videos;
+  }
+
+  function navigateToProfileAndOpenVideo(username, videoId) {
+    const editor = editorByUsername(username);
+    if (!editor || !videoId) {
+      if (username) {
+        window.navigate("profile", username);
+      }
+      return;
+    }
+
+    const video = (editor.videos || []).find((item) => item.id === videoId);
+    window.navigate("profile", username);
+    if (!video) {
+      return;
+    }
+
+    const desiredTab = video.type === "long" ? "long" : "short";
+    setTimeout(() => {
+      if (typeof window.switchProfileTab === "function" && window.currentProfileTab !== desiredTab) {
+        window.switchProfileTab(desiredTab);
+      }
+      openPlayerForVideo(editorByUsername(username), video);
+    }, 50);
+  }
+
+  function decorateProfileVideoCards() {
+    const editor = editorByUsername(window.currentProfileUser);
+    if (!editor) {
+      return;
+    }
+
+    const videos = currentProfileVideos();
+    const selector = window.currentProfileTab === "short" ? "#shortVideoList .short-video-card" : "#longVideoList .long-video-card";
+    const cards = Array.from(document.querySelectorAll(selector));
+    cards.forEach((card, index) => {
+      const video = videos[index];
+      const info = card.querySelector(".info");
+      if (!video || !info) {
+        return;
+      }
+
+      const existing = info.querySelector(".ela-video-social");
+      if (existing) {
+        existing.remove();
+      }
+
+      const counts = reactionCounts(video);
+      const block = document.createElement("div");
+      block.className = "ela-video-social";
+      block.style.display = "flex";
+      block.style.flexDirection = "column";
+      block.style.gap = "10px";
+      block.style.marginTop = "12px";
+      block.innerHTML =
+        `<div style="display:flex;gap:10px;flex-wrap:wrap;color:var(--text-muted);font-size:0.76rem;">` +
+        `<span>${REACTION_META.star.emoji} ${window.formatNumber(counts.star)}</span>` +
+        `<span>${REACTION_META.like.emoji} ${window.formatNumber(counts.like)}</span>` +
+        `<span>${REACTION_META.love.emoji} ${window.formatNumber(counts.love)}</span>` +
+        `<span>${REACTION_META.fire.emoji} ${window.formatNumber(counts.fire)}</span>` +
+        `</div>`;
+
+      const reactionsHost = document.createElement("div");
+      mountReactionButtons(reactionsHost, editor.username, video, true);
+      block.appendChild(reactionsHost);
+      info.appendChild(block);
+    });
+  }
+
+  function decorateDiscoverCards(editors) {
+    const container = document.getElementById("discoverResults");
+    if (!container || !Array.isArray(editors)) {
+      return;
+    }
+
+    Array.from(container.children).forEach((card, index) => {
+      const editor = editors[index];
+      if (!editor) {
+        return;
+      }
+
+      const body = card.querySelector(".card-body");
+      if (!body || body.querySelector(".ela-work-stats")) {
+        return;
+      }
+
+      const stats = document.createElement("div");
+      stats.className = "ela-work-stats";
+      stats.style.marginTop = "14px";
+      stats.innerHTML = renderWorkStatsPill(editor, true);
+      body.appendChild(stats);
+    });
   }
 
   function updateNavigationAuth() {
@@ -336,6 +694,9 @@
       return;
     }
 
+    teardownPlayerModal();
+    window.__elaActivePlayerVideoId = video.id;
+    window.__elaActivePlayerUsername = editor.username;
     document.getElementById("playerTitle").textContent = video.title;
     document.getElementById("playerCategory").textContent = video.category;
     document.getElementById("playerType").textContent =
@@ -344,8 +705,8 @@
 
     if (video.has_uploaded_file && video.playback_url) {
       document.getElementById("playerContainer").innerHTML =
-        `<video src="${video.playback_url}" controls autoplay ` +
-        'style="width:100%;height:100%;background:#000;" playsinline></video>';
+        `<video src="${video.playback_url}" controls controlsList="nodownload" disablepictureinpicture autoplay ` +
+        'style="width:100%;height:100%;background:#000;" playsinline oncontextmenu="return false;"></video>';
     } else {
       const embedUrl = window.getEmbedUrl(video.url);
       document.getElementById("playerContainer").innerHTML =
@@ -354,6 +715,7 @@
         "allowfullscreen></iframe>";
     }
 
+    renderPlayerActions(editor, video);
     window.openModal("videoPlayerModal");
   }
 
@@ -535,6 +897,26 @@
       usernameInput.closest("div").insertAdjacentElement("afterend", cnameBlock);
     }
 
+    if (!document.getElementById("editClientsServed")) {
+      const statsBlock = document.createElement("div");
+      statsBlock.id = "editWorkStatsBlock";
+      statsBlock.style.display = "grid";
+      statsBlock.style.gridTemplateColumns = "1fr 1fr";
+      statsBlock.style.gap = "16px";
+      statsBlock.innerHTML =
+        `<div>` +
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Clients Worked With</label>` +
+        `<input type="number" min="0" class="input-field" id="editClientsServed" placeholder="0">` +
+        `</div>` +
+        `<div>` +
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Completed Projects</label>` +
+        `<input type="number" min="0" class="input-field" id="editCompletedProjects" placeholder="0">` +
+        `</div>`;
+      document.getElementById("editCname")
+        ?.closest("div")
+        ?.insertAdjacentElement("afterend", statsBlock);
+    }
+
     if (!document.getElementById("editAvatarFile")) {
       const avatarFileBlock = document.createElement("div");
       avatarFileBlock.innerHTML =
@@ -688,6 +1070,14 @@
 
     actionHost.innerHTML = "";
 
+    if (editor.role === "editor") {
+      const statsButton = document.createElement("button");
+      statsButton.type = "button";
+      statsButton.className = "btn-secondary";
+      statsButton.innerHTML = `<i class="fas fa-briefcase"></i> ${escapeHtml(workStatsLabel(editor))}`;
+      actionHost.appendChild(statsButton);
+    }
+
     if (editor.can_edit) {
       const editBtn = document.createElement("button");
       editBtn.type = "button";
@@ -840,15 +1230,7 @@
       document.getElementById("loginPassword").value = "";
       window.closeModal("loginModal");
       window.showToast(payload.message, "success");
-      window.navigate("dashboard");
-      if (isCurrentUserClient()) {
-        window.__elaActiveDashboardTab = "profile";
-        setTimeout(() => {
-          if (typeof window.switchDashTab === "function") {
-            window.switchDashTab("profile");
-          }
-        }, 30);
-      }
+      window.navigate("profile", window.currentUser);
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -871,6 +1253,11 @@
       const formData = new FormData();
       formData.append("username", document.getElementById("editUsername").value.trim());
       formData.append("cname", document.getElementById("editCname")?.value.trim() || "");
+      formData.append("clients_served", document.getElementById("editClientsServed")?.value || "0");
+      formData.append(
+        "completed_projects",
+        document.getElementById("editCompletedProjects")?.value || "0"
+      );
       formData.append("bio", document.getElementById("editBio").value.trim());
       formData.append("avatar_url", document.getElementById("editAvatar").value.trim());
       const avatarInput = document.getElementById("editAvatarFile");
@@ -894,6 +1281,7 @@
       }
       renderCurrentContexts();
       window.showToast(payload.message, "success");
+      window.navigate("profile", payload.updated_username || window.currentUser);
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -912,6 +1300,7 @@
       replaceState(payload);
       renderCurrentContexts();
       window.showToast(payload.message, "success");
+      window.navigate("profile", payload.updated_username || window.currentUser);
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -947,6 +1336,10 @@
       resetVideoSourceControls("link");
       renderCurrentContexts();
       window.showToast(payload.message, "success");
+      navigateToProfileAndOpenVideo(
+        payload.profile_username || window.currentUser,
+        payload.video_id || editId
+      );
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -1126,10 +1519,76 @@
     });
   };
 
+  if (originalRenderFeatured) {
+    window.renderFeatured = function () {
+      const grid = document.getElementById("featuredGrid");
+      if (!grid) {
+        return;
+      }
+
+      const featured = (window.getEditors() || [])
+        .filter((editor) => editor.role === "editor" && Array.isArray(editor.videos) && editor.videos.length)
+        .sort(featuredEditorComparator)
+        .slice(0, 6);
+
+      grid.innerHTML = featured
+        .map((editor) => {
+          const rankedVideos = featuredSortedVideos(editor.videos || []);
+          const topVideo = rankedVideos[0] || editor.videos[0];
+          const counts = reactionCounts(topVideo);
+          const totalViews = (editor.videos || []).reduce((sum, video) => sum + (video.views || 0), 0);
+          const displayName = editor.display_name || editor.username;
+
+          return (
+            `<div class="editor-card card" onclick="navigate('profile','${editor.username}')">` +
+            `<div class="card-thumb">` +
+            `<img src="${escapeHtml(topVideo ? topVideo.thumb : editor.avatar)}" alt="${escapeHtml(displayName)}" loading="lazy">` +
+            `<div class="play-icon"><i class="fas fa-play" style="margin-left:2px;"></i></div>` +
+            `</div>` +
+            `<div class="card-body">` +
+            `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">` +
+            `<img src="${escapeHtml(editor.avatar)}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);">` +
+            `<div>` +
+            `<div class="editor-name">${escapeHtml(displayName)}</div>` +
+            `${
+              displayName !== editor.username
+                ? `<div class="editor-meta">@${escapeHtml(editor.username)}</div>`
+                : ""
+            }` +
+            `</div>` +
+            `</div>` +
+            `<p style="color:var(--text-secondary);font-size:0.85rem;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(editor.bio)}</p>` +
+            `<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">` +
+            `<span style="color:var(--text-muted);font-size:0.8rem;"><i class="fas fa-video" style="margin-right:4px;"></i>${editor.videos.length} videos</span>` +
+            `<span style="color:var(--text-muted);font-size:0.8rem;"><i class="fas fa-eye" style="margin-right:4px;"></i>${window.formatNumber(totalViews)}</span>` +
+            `<span style="color:var(--text-muted);font-size:0.8rem;">${REACTION_META.star.emoji} ${window.formatNumber(counts.star)} \u00B7 ${REACTION_META.like.emoji} ${window.formatNumber(counts.like)}</span>` +
+            `</div>` +
+            `<div style="margin-top:12px;">${renderWorkStatsPill(editor, true)}</div>` +
+            `${
+              topVideo
+                ? `<span class="badge" style="margin-top:12px;font-size:0.7rem;">${escapeHtml(topVideo.category)}</span>`
+                : ""
+            }` +
+            `</div>` +
+            `</div>`
+          );
+        })
+        .join("");
+    };
+  }
+
   if (originalRenderDiscoverResults) {
     window.renderDiscoverResults = function (editors) {
       originalRenderDiscoverResults(editors);
+      decorateDiscoverCards(editors);
       highlightSignedInDiscoverCards(editors);
+    };
+  }
+
+  if (originalRenderProfileVideos) {
+    window.renderProfileVideos = function () {
+      originalRenderProfileVideos();
+      decorateProfileVideoCards();
     };
   }
 
@@ -1161,7 +1620,7 @@
       if (badge) {
         badge.textContent =
           editor.role === "editor"
-            ? `${editor.role_label} · ${editor.videos.length} video${editor.videos.length === 1 ? "" : "s"}`
+            ? `${editor.role_label} \u00B7 ${editor.videos.length} video${editor.videos.length === 1 ? "" : "s"}`
             : `${editor.role_label} Account`;
       }
 
@@ -1228,6 +1687,12 @@
       document.getElementById("editAvatar").value = editor.avatar_url || "";
       if (document.getElementById("editCname")) {
         document.getElementById("editCname").value = editor.cname || "";
+      }
+      if (document.getElementById("editClientsServed")) {
+        document.getElementById("editClientsServed").value = editor.clients_served || 0;
+      }
+      if (document.getElementById("editCompletedProjects")) {
+        document.getElementById("editCompletedProjects").value = editor.completed_projects || 0;
       }
       if (document.getElementById("editAvatarFileStatus")) {
         document.getElementById("editAvatarFileStatus").textContent = editor.has_custom_avatar
@@ -1339,6 +1804,10 @@
     document.addEventListener("DOMContentLoaded", routeFromPath);
     window.addEventListener("popstate", routeFromPath);
   }
+
+  document.getElementById("videoPlayerModal")?.addEventListener("ela:before-close", function () {
+    teardownPlayerModal();
+  });
 
   replaceState(bootstrap);
   if (!window.__elaActiveDashboardTab) {

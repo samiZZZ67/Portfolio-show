@@ -1088,7 +1088,10 @@ textarea.input-field { resize: vertical; min-height: 100px; }
         <span class="badge" id="playerCategory"></span>
         <span class="badge" id="playerType" style="background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border);"></span>
       </div>
-      <div style="color:var(--text-secondary);font-size:0.85rem;" id="playerViews"></div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end;">
+        <div id="playerActions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"></div>
+        <div style="color:var(--text-secondary);font-size:0.85rem;" id="playerViews"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1360,6 +1363,8 @@ function openModal(id) {
 
 function closeModal(id) {
   const modal = document.getElementById(id);
+  if (!modal) return;
+  modal.dispatchEvent(new CustomEvent('ela:before-close'));
   modal.classList.remove('show');
   document.body.style.overflow = '';
 }
@@ -1368,8 +1373,7 @@ function closeModal(id) {
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) {
-      overlay.classList.remove('show');
-      document.body.style.overflow = '';
+      closeModal(overlay.id);
     }
   });
 });
@@ -2247,8 +2251,7 @@ window.addEventListener('resize', handleResize);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     document.querySelectorAll('.modal-overlay.show').forEach(m => {
-      m.classList.remove('show');
-      document.body.style.overflow = '';
+      closeModal(m.id);
     });
   }
 });

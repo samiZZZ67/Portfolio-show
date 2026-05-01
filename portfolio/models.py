@@ -31,6 +31,13 @@ class VideoSourceType(models.TextChoices):
     BOTH = "both", "Both"
 
 
+class VideoReactionType(models.TextChoices):
+    STAR = "star", "Star"
+    LIKE = "like", "Like"
+    LOVE = "love", "Love"
+    FIRE = "fire", "Fire"
+
+
 def profile_avatar_upload_to(instance, filename):
     return f"profile_avatars/{instance.user.username}/{filename}"
 
@@ -60,6 +67,8 @@ class EditorProfile(models.Model):
     whatsapp = models.CharField(max_length=32, blank=True)
     phone = models.CharField(max_length=32, blank=True)
     other_contacts = models.JSONField(default=list, blank=True)
+    clients_served = models.PositiveIntegerField(default=0)
+    completed_projects = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -194,3 +203,33 @@ class FollowRelationship(models.Model):
 
     def __str__(self):
         return f"{self.follower.user.username} -> {self.followed.user.username}"
+
+
+class VideoReaction(models.Model):
+    video = models.ForeignKey(
+        PortfolioVideo,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    profile = models.ForeignKey(
+        EditorProfile,
+        on_delete=models.CASCADE,
+        related_name="video_reactions",
+    )
+    reaction_type = models.CharField(
+        max_length=10,
+        choices=VideoReactionType.choices,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["video", "profile", "reaction_type"],
+                name="unique_video_reaction_per_type",
+            )
+        ]
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.profile.user.username} {self.reaction_type} {self.video_id}"

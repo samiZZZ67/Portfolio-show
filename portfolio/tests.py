@@ -10,8 +10,10 @@ from .models import (
     AccountRole,
     FollowRelationship,
     PortfolioVideo,
+    VideoReaction,
     VideoCategory,
     VideoContentType,
+    VideoReactionType,
     VideoSourceType,
 )
 
@@ -96,6 +98,23 @@ class PortfolioApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, "Invalid username or password.", status_code=400)
+
+    def test_login_returns_success_message_and_session(self):
+        user = User.objects.create_user(
+            username="EditorLogin",
+            password="CorrectHorse123!",
+            email="editorlogin@example.com",
+        )
+        response = self.client.post(
+            reverse("portfolio:login"),
+            {
+                "username": "EditorLogin",
+                "password": "CorrectHorse123!",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["message"], "Login successful.")
+        self.assertEqual(self.client.session.get("_auth_user_id"), str(user.pk))
 
     def test_search_endpoint_filters_existing_portfolios(self):
         response = self.client.get(
@@ -194,6 +213,8 @@ class PortfolioApiTests(TestCase):
             {
                 "username": "EditorRenamed",
                 "cname": "Renamed Studio",
+                "clients_served": 12,
+                "completed_projects": 48,
                 "bio": "Updated bio",
                 "avatar_url": "",
                 "avatar_file": avatar,
@@ -203,6 +224,8 @@ class PortfolioApiTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.username, "EditorRenamed")
         self.assertEqual(user.editor_profile.cname, "Renamed Studio")
+        self.assertEqual(user.editor_profile.clients_served, 12)
+        self.assertEqual(user.editor_profile.completed_projects, 48)
         self.assertTrue(user.editor_profile.avatar_file.name.endswith("avatar.png"))
 
     def test_follow_toggle_requires_login_and_persists(self):
@@ -392,3 +415,157 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(video.video_source, VideoSourceType.BOTH)
         self.assertEqual(video.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
         self.assertTrue(video.uploaded_file.name.endswith("campaign.mov"))
+
+    def test_video_reactions_keep_star_separate_from_like(self):
+        owner = User.objects.create_user(
+            username="ReactionOwner",
+            password="SecurePass123!",
+            email="reactionowner@example.com",
+        )
+        owner.editor_profile.phone = "+251900000001"
+        owner.editor_profile.save(update_fields=["phone"])
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Reaction Reel",
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+        )
+
+        reactor = User.objects.create_user(
+            username="ReactionClient",
+            password="SecurePass123!",
+            email="reactionclient@example.com",
+        )
+        self.client.force_login(reactor)
+
+        star_response = self.client.post(
+            reverse(
+                "portfolio:video-react",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+            {"reaction_type": VideoReactionType.STAR},
+        )
+        self.assertEqual(star_response.status_code, 200)
+
+        like_response = self.client.post(
+            reverse(
+                "portfolio:video-react",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+            {"reaction_type": VideoReactionType.LIKE},
+        )
+        self.assertEqual(like_response.status_code, 200)
+        self.assertEqual(
+            VideoReaction.objects.filter(video=video, profile=reactor.editor_profile).count(),
+            2,
+        )
+
+        payload = like_response.json()
+        owner_payload = next(
+            editor for editor in payload["editors"] if editor["username"] == owner.username
+        )
+        video_payload = next(item for item in owner_payload["videos"] if item["id"] == str(video.id))
+        self.assertEqual(video_payload["reactions"][VideoReactionType.STAR], 1)
+        self.assertEqual(video_payload["reactions"][VideoReactionType.LIKE], 1)
+        self.assertIn(VideoReactionType.STAR, video_payload["viewer_reactions"])
+        self.assertIn(VideoReactionType.LIKE, video_payload["viewer_reactions"])
+
+        unlike_response = self.client.post(
+            reverse(
+                "portfolio:video-react",
+                kwargs={"username": owner.username, "video_id": video.id},
+            ),
+            {"reaction_type": VideoReactionType.LIKE},
+        )
+        self.assertEqual(unlike_response.status_code, 200)
+        self.assertEqual(
+            VideoReaction.objects.filter(video=video, profile=reactor.editor_profile).count(),
+            1,
+        )
+
+    def test_uploaded_video_download_is_owner_only(self):
+        owner = User.objects.create_user(
+            username="DownloadOwner",
+            password="SecurePass123!",
+            email="downloadowner@example.com",
+        )
+        owner.editor_profile.phone = "+251900000002"
+        owner.editor_profile.save(update_fields=["phone"])
+        uploaded_file = SimpleUploadedFile(
+            "private-cut.mp4",
+            b"binary-video",
+            content_type="video/mp4",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Private Uploaded Cut",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=uploaded_file,
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+        )
+
+        outsider = User.objects.create_user(
+            username="DownloadOutsider",
+            password="SecurePass123!",
+            email="downloadoutsider@example.com",
+        )
+        self.client.force_login(outsider)
+
+        stream_response = self.client.get(
+            reverse(
+                "portfolio:video-stream",
+                kwargs={"username": owner.username, "video_id": video.id},
+            )
+        )
+        self.assertEqual(stream_response.status_code, 200)
+        self.assertIn("inline;", stream_response["Content-Disposition"])
+
+        forbidden_download = self.client.get(
+            reverse(
+                "portfolio:video-download",
+                kwargs={"username": owner.username, "video_id": video.id},
+            )
+        )
+        self.assertEqual(forbidden_download.status_code, 403)
+
+        self.client.force_login(owner)
+        allowed_download = self.client.get(
+            reverse(
+                "portfolio:video-download",
+                kwargs={"username": owner.username, "video_id": video.id},
+            )
+        )
+        self.assertEqual(allowed_download.status_code, 200)
+        self.assertIn("attachment;", allowed_download["Content-Disposition"])
+
+    def test_uploaded_avatar_is_served_from_backend_endpoint(self):
+        user = User.objects.create_user(
+            username="AvatarOwner",
+            password="SecurePass123!",
+            email="avatarowner@example.com",
+        )
+        user.editor_profile.phone = "+251900000003"
+        user.editor_profile.avatar_file = SimpleUploadedFile(
+            "avatar.png",
+            b"avatar-binary",
+            content_type="image/png",
+        )
+        user.editor_profile.save(update_fields=["phone", "avatar_file"])
+
+        response = self.client.get(
+            reverse("portfolio:profile-avatar", kwargs={"username": user.username})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("inline;", response["Content-Disposition"])
+
+        bootstrap = self.client.get(reverse("portfolio:bootstrap")).json()
+        profile_payload = next(
+            editor for editor in bootstrap["editors"] if editor["username"] == user.username
+        )
+        self.assertIn(f"/api/profiles/{user.username}/avatar/", profile_payload["avatar"])

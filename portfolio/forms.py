@@ -182,6 +182,8 @@ class ProfileForm(forms.ModelForm):
         max_length=150,
     )
     cname = forms.CharField(required=False, max_length=150)
+    clients_served = forms.IntegerField(min_value=0, required=False, initial=0)
+    completed_projects = forms.IntegerField(min_value=0, required=False, initial=0)
     avatar_file = forms.FileField(
         required=False,
         validators=[
@@ -193,7 +195,14 @@ class ProfileForm(forms.ModelForm):
 
     class Meta:
         model = EditorProfile
-        fields = ("cname", "bio", "avatar_url", "avatar_file")
+        fields = (
+            "cname",
+            "bio",
+            "avatar_url",
+            "avatar_file",
+            "clients_served",
+            "completed_projects",
+        )
         widgets = {
             "bio": forms.Textarea(
                 attrs={
@@ -209,6 +218,22 @@ class ProfileForm(forms.ModelForm):
                     "placeholder": "https://example.com/avatar.jpg",
                 }
             ),
+            "clients_served": forms.NumberInput(
+                attrs={
+                    "id": "editClientsServed",
+                    "class": "input-field",
+                    "placeholder": "0",
+                    "min": "0",
+                }
+            ),
+            "completed_projects": forms.NumberInput(
+                attrs={
+                    "id": "editCompletedProjects",
+                    "class": "input-field",
+                    "placeholder": "0",
+                    "min": "0",
+                }
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -216,6 +241,8 @@ class ProfileForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["username"].initial = self.user.username
         self.fields["cname"].initial = self.instance.cname
+        self.fields["clients_served"].initial = self.instance.clients_served
+        self.fields["completed_projects"].initial = self.instance.completed_projects
 
     def clean_username(self):
         username = self.cleaned_data["username"]
@@ -241,6 +268,8 @@ class ProfileForm(forms.ModelForm):
         self.user.username = self.cleaned_data["username"]
         self.user.save(update_fields=["username"])
         profile.cname = self.cleaned_data["cname"].strip()
+        profile.clients_served = self.cleaned_data.get("clients_served") or 0
+        profile.completed_projects = self.cleaned_data.get("completed_projects") or 0
 
         avatar_file = self.cleaned_data.get("avatar_file")
         if avatar_file:

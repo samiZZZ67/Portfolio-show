@@ -16,6 +16,7 @@ urlpatterns = [
     path("dashboard/", views.frontend_shell, name="dashboard"),
     path("robots.txt", views.robots_txt_view, name="robots"),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
+    path("api/profiles/<str:username>/avatar/", views.profile_avatar_view, name="profile-avatar"),
     path("auth/signup/", views.signup_view, name="signup"),
     path("auth/login/", views.login_view, name="login"),
     path("auth/logout/", views.logout_view, name="logout"),
@@ -32,6 +33,21 @@ urlpatterns = [
         "api/profiles/<str:username>/videos/<uuid:video_id>/play/",
         views.video_play_view,
         name="video-play",
+    ),
+    path(
+        "api/profiles/<str:username>/videos/<uuid:video_id>/react/",
+        views.video_reaction_toggle_view,
+        name="video-react",
+    ),
+    path(
+        "api/profiles/<str:username>/videos/<uuid:video_id>/stream/",
+        views.video_stream_view,
+        name="video-stream",
+    ),
+    path(
+        "api/profiles/<str:username>/videos/<uuid:video_id>/download/",
+        views.video_download_view,
+        name="video-download",
     ),
     path("<str:username>/", views.frontend_shell, name="public-profile"),
     re_path(
