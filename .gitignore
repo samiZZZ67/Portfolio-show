@@ -1,5 +1,4 @@
 # Ignore local configuration and editor-specific files
-config/urls.py
 *.env
 .env
 
