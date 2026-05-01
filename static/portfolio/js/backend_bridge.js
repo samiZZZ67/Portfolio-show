@@ -26,12 +26,58 @@
     fire: { emoji: "\uD83D\uDD25", label: "Fire" },
   };
 
+  function syncAuthGlobals(user, role) {
+    window.currentUser = user || null;
+    window.currentUserRole = role || null;
+    try {
+      currentUser = window.currentUser;
+    } catch (error) {
+      void error;
+    }
+  }
+
+  function syncRouteGlobals() {
+    try {
+      window.currentPage = currentPage;
+    } catch (error) {
+      void error;
+    }
+    try {
+      window.currentProfileUser = currentProfileUser;
+    } catch (error) {
+      void error;
+    }
+    try {
+      window.currentProfileTab = currentProfileTab;
+    } catch (error) {
+      void error;
+    }
+    try {
+      window.currentProfileCat = currentProfileCat;
+    } catch (error) {
+      void error;
+    }
+    try {
+      window.currentDiscoverCat = currentDiscoverCat;
+    } catch (error) {
+      void error;
+    }
+  }
+
+  function setDiscoverCategoryState(value) {
+    window.currentDiscoverCat = value;
+    try {
+      currentDiscoverCat = value;
+    } catch (error) {
+      void error;
+    }
+  }
+
   function replaceState(payload) {
     const editors = Array.isArray(payload.editors) ? payload.editors : [];
     window.__elaBootstrap = payload;
     window.__elaEditors = editors;
-    window.currentUser = payload.current_user || null;
-    window.currentUserRole = payload.current_user_role || null;
+    syncAuthGlobals(payload.current_user || null, payload.current_user_role || null);
 
     if (window.currentUser) {
       localStorage.setItem("ela_current_user", window.currentUser);
@@ -1397,12 +1443,12 @@
     const selectedCategory = catFilter.value || "all";
 
     if (selectedCategory !== "all") {
-      window.currentDiscoverCat = selectedCategory;
+      setDiscoverCategoryState(selectedCategory);
       document.querySelectorAll("#filterChips .filter-chip").forEach((chip) => {
         chip.classList.toggle("active", chip.dataset.cat === selectedCategory);
       });
     } else {
-      window.currentDiscoverCat = "all";
+      setDiscoverCategoryState("all");
       document.querySelectorAll("#filterChips .filter-chip").forEach((chip) => {
         chip.classList.toggle("active", chip.dataset.cat === "all");
       });
@@ -1744,6 +1790,24 @@
     };
   }
 
+  if (typeof window.switchProfileTab === "function") {
+    const originalSwitchProfileTab = window.switchProfileTab;
+    window.switchProfileTab = function (tab) {
+      const result = originalSwitchProfileTab(tab);
+      syncRouteGlobals();
+      return result;
+    };
+  }
+
+  if (typeof window.setProfileCatFilter === "function") {
+    const originalSetProfileCatFilter = window.setProfileCatFilter;
+    window.setProfileCatFilter = function (el) {
+      const result = originalSetProfileCatFilter(el);
+      syncRouteGlobals();
+      return result;
+    };
+  }
+
   if (originalOpenAddVideoModal) {
     window.openAddVideoModal = function () {
       originalOpenAddVideoModal();
@@ -1768,6 +1832,7 @@
   if (originalNavigate) {
     window.navigate = function (page, data) {
       originalNavigate(page, data);
+      syncRouteGlobals();
       syncHistory(page, data);
     };
 
@@ -1810,6 +1875,7 @@
   });
 
   replaceState(bootstrap);
+  syncRouteGlobals();
   if (!window.__elaActiveDashboardTab) {
     window.__elaActiveDashboardTab = "videos";
   }

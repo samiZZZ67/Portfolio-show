@@ -11,6 +11,10 @@ def csv_env(name, default=""):
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-secret")
 DEBUG = os.environ.get("DEBUG", "False").lower() in {"1", "true", "yes"}
+IS_RENDER = bool(
+    os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+    or os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+)
 ALLOWED_HOSTS = list(
     {
         *csv_env("ALLOWED_HOSTS", "portfolio-show.onrender.com"),
@@ -110,8 +114,8 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 
 if not DEBUG:
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = IS_RENDER
+    CSRF_COOKIE_SECURE = IS_RENDER
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     USE_X_FORWARDED_HOST = True
-    SECURE_SSL_REDIRECT = "test" not in sys.argv
+    SECURE_SSL_REDIRECT = IS_RENDER and "test" not in sys.argv
