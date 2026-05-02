@@ -1,9 +1,12 @@
 import uuid
 from urllib.parse import quote
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.files.storage import Storage, default_storage
 from django.db import models
+from django.utils.deconstruct import deconstructible
 
 
 class VideoContentType(models.TextChoices):
@@ -45,6 +48,45 @@ def profile_avatar_upload_to(instance, filename):
 
 def portfolio_video_upload_to(instance, filename):
     return f"portfolio_videos/{instance.profile.user.username}/{instance.id}/{filename}"
+
+
+@deconstructible
+class PortfolioVideoStorage(Storage):
+    """
+    Uses Cloudinary's video storage when media storage is enabled and
+    falls back to Django's default storage everywhere else.
+    """
+
+    def _get_storage(self):
+        if getattr(settings, "CLOUDINARY_MEDIA_ENABLED", False):
+            from cloudinary_storage.storage import VideoMediaCloudinaryStorage
+
+            return VideoMediaCloudinaryStorage()
+        return default_storage
+
+    def _open(self, name, mode="rb"):
+        return self._get_storage()._open(name, mode)
+
+    def _save(self, name, content):
+        return self._get_storage()._save(name, content)
+
+    def delete(self, name):
+        return self._get_storage().delete(name)
+
+    def exists(self, name):
+        return self._get_storage().exists(name)
+
+    def listdir(self, path):
+        return self._get_storage().listdir(path)
+
+    def size(self, name):
+        return self._get_storage().size(name)
+
+    def url(self, name):
+        return self._get_storage().url(name)
+
+    def get_available_name(self, name, max_length=None):
+        return self._get_storage().get_available_name(name, max_length=max_length)
 
 
 class EditorProfile(models.Model):
@@ -137,6 +179,7 @@ class PortfolioVideo(models.Model):
     uploaded_file = models.FileField(
         upload_to=portfolio_video_upload_to,
         blank=True,
+        storage=PortfolioVideoStorage(),
     )
     thumbnail_url = models.URLField(max_length=500, blank=True)
     content_type = models.CharField(

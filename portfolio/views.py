@@ -5,14 +5,17 @@ import re
 from functools import wraps
 from pathlib import Path
 
+from cloudinary.exceptions import Error as CloudinaryError
+from cloudinary.utils import cloudinary_url
 from django.conf import settings
 from django.contrib.auth import login, logout
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import ValidationError
+from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from django.db.models import Count, F, Prefetch
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
 from django.urls import reverse
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -171,6 +174,31 @@ def profile_avatar_src(profile):
     if profile.avatar_file:
         return reverse("portfolio:profile-avatar", kwargs={"username": profile.user.username})
     return profile.avatar
+
+
+def resolve_field_storage(field_file):
+    storage = getattr(field_file, "storage", None)
+    resolver = getattr(storage, "_get_storage", None)
+    if callable(resolver):
+        try:
+            return resolver()
+        except Exception:
+            return storage
+    return storage
+
+
+def uses_local_filesystem_storage(field_file):
+    storage = resolve_field_storage(field_file)
+    return isinstance(storage, FileSystemStorage)
+
+
+def cloudinary_download_redirect_url(field_file, resource_type):
+    download_url, _options = cloudinary_url(
+        field_file.name,
+        resource_type=resource_type,
+        flags="attachment",
+    )
+    return download_url
 
 
 def like_summary(video, current_profile=None):
@@ -545,7 +573,16 @@ def signup_view(request):
     form = SignUpForm(request.POST, request.FILES)
     if not form.is_valid():
         return json_error_response(form)
-    user = form.save()
+    try:
+        user = form.save()
+    except CloudinaryError:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Profile media upload failed. Please try again.",
+            },
+            status=400,
+        )
     login(request, user)
     welcome_message = (
         f"Welcome, {user.editor_profile.display_name}! Your portfolio is ready."
@@ -584,7 +621,16 @@ def profile_update_view(request):
     form = ProfileForm(request.POST, request.FILES, instance=profile, user=request.user)
     if not form.is_valid():
         return json_error_response(form)
-    form.save()
+    try:
+        form.save()
+    except CloudinaryError:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Profile media upload failed. Please try again.",
+            },
+            status=400,
+        )
     return refresh_payload_response(
         request,
         "Portfolio updated successfully.",
@@ -641,10 +687,19 @@ def video_create_view(request):
     if not form.is_valid():
         return json_error_response(form)
     profile = request.user.editor_profile
-    video = form.save(commit=False)
-    video.profile = profile
-    video.sort_order = profile.videos.count()
-    video.save()
+    try:
+        video = form.save(commit=False)
+        video.profile = profile
+        video.sort_order = profile.videos.count()
+        video.save()
+    except CloudinaryError:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Video upload failed. Please upload a valid video file and try again.",
+            },
+            status=400,
+        )
     return refresh_payload_response(
         request,
         "Video uploaded successfully.",
@@ -660,7 +715,16 @@ def video_update_view(request, video_id):
     form = VideoForm(request.POST, request.FILES, instance=video)
     if not form.is_valid():
         return json_error_response(form)
-    form.save()
+    try:
+        form.save()
+    except CloudinaryError:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Video upload failed. Please upload a valid video file and try again.",
+            },
+            status=400,
+        )
     return refresh_payload_response(
         request,
         "Video updated successfully.",
@@ -818,6 +882,9 @@ def video_stream_view(request, username, video_id):
     if not video.has_uploaded_file:
         raise Http404("Uploaded video not found.")
 
+    if not uses_local_filesystem_storage(video.uploaded_file):
+        return redirect(video.uploaded_file.url)
+
     guessed_type = mimetypes.guess_type(video.uploaded_file.name)[0] or "video/mp4"
     response = FileResponse(video.uploaded_file.open("rb"), content_type=guessed_type)
     response["Content-Disposition"] = (
@@ -832,6 +899,9 @@ def profile_avatar_view(request, username):
     profile = get_visible_profile(request, username)
     if not profile.avatar_file:
         raise Http404("Avatar not found.")
+
+    if not uses_local_filesystem_storage(profile.avatar_file):
+        return redirect(profile.avatar_file.url)
 
     guessed_type = mimetypes.guess_type(profile.avatar_file.name)[0] or "image/jpeg"
     response = FileResponse(profile.avatar_file.open("rb"), content_type=guessed_type)
@@ -855,6 +925,9 @@ def video_download_view(request, username, video_id):
         )
     if not video.has_uploaded_file:
         raise Http404("Uploaded video not found.")
+
+    if not uses_local_filesystem_storage(video.uploaded_file):
+        return redirect(cloudinary_download_redirect_url(video.uploaded_file, resource_type="video"))
 
     guessed_type = mimetypes.guess_type(video.uploaded_file.name)[0] or "application/octet-stream"
     response = FileResponse(video.uploaded_file.open("rb"), content_type=guessed_type)

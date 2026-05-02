@@ -39,6 +39,34 @@ INSTALLED_APPS = [
     "portfolio.apps.PortfolioConfig",
 ]
 
+CLOUDINARY_STORAGE = {
+    "SECURE": True,
+}
+cloudinary_cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", "").strip()
+cloudinary_api_key = os.environ.get("CLOUDINARY_API_KEY", "").strip()
+cloudinary_api_secret = os.environ.get("CLOUDINARY_API_SECRET", "").strip()
+if cloudinary_cloud_name and cloudinary_api_key and cloudinary_api_secret:
+    CLOUDINARY_STORAGE.update(
+        {
+            "CLOUD_NAME": cloudinary_cloud_name,
+            "API_KEY": cloudinary_api_key,
+            "API_SECRET": cloudinary_api_secret,
+        }
+    )
+
+CLOUDINARY_MEDIA_ENABLED = bool(
+    os.environ.get("CLOUDINARY_URL", "").strip()
+    or all(CLOUDINARY_STORAGE.get(key) for key in ("CLOUD_NAME", "API_KEY", "API_SECRET"))
+)
+
+if CLOUDINARY_MEDIA_ENABLED:
+    INSTALLED_APPS.extend(
+        [
+            "cloudinary_storage",
+            "cloudinary",
+        ]
+    )
+
 MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -96,9 +124,25 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = [BASE_DIR / "static"]
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+STATICFILES_BACKEND = (
+    "django.contrib.staticfiles.storage.StaticFilesStorage"
+    if DEBUG or "test" in sys.argv
+    else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+)
+STORAGES = {
+    "default": {
+        "BACKEND": (
+            "cloudinary_storage.storage.MediaCloudinaryStorage"
+            if CLOUDINARY_MEDIA_ENABLED
+            else "django.core.files.storage.FileSystemStorage"
+        ),
+    },
+    "staticfiles": {
+        "BACKEND": STATICFILES_BACKEND,
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
