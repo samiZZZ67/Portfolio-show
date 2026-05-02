@@ -13,7 +13,7 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.db.models import Count, F, Prefetch
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -212,6 +212,32 @@ def cloudinary_upload_error_response(exc, user_message):
     if settings.DEBUG:
         payload["details"] = str(exc)
     return JsonResponse(payload, status=400)
+
+
+def local_media_path(field_file):
+    name = (getattr(field_file, "name", "") or "").lstrip("/\\")
+    if not name:
+        return None
+
+    media_root = Path(settings.MEDIA_ROOT).resolve()
+    candidate = (media_root / name).resolve()
+    try:
+        candidate.relative_to(media_root)
+    except ValueError:
+        return None
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+def open_local_media_file(field_file):
+    if uses_local_filesystem_storage(field_file):
+        return field_file.open("rb")
+
+    candidate = local_media_path(field_file)
+    if candidate:
+        return candidate.open("rb")
+    return None
 
 
 def like_summary(video, current_profile=None):
@@ -593,6 +619,11 @@ def signup_view(request):
             exc,
             "Profile media upload failed. Please verify Cloudinary is configured correctly and try again.",
         )
+    except DatabaseError as exc:
+        return cloudinary_upload_error_response(
+            exc,
+            "Profile media upload failed. Please try again with a shorter file name.",
+        )
     login(request, user)
     welcome_message = (
         f"Welcome, {user.editor_profile.display_name}! Your portfolio is ready."
@@ -637,6 +668,11 @@ def profile_update_view(request):
         return cloudinary_upload_error_response(
             exc,
             "Profile media upload failed. Please verify Cloudinary is configured correctly and try again.",
+        )
+    except DatabaseError as exc:
+        return cloudinary_upload_error_response(
+            exc,
+            "Profile media upload failed. Please try again with a shorter file name.",
         )
     return refresh_payload_response(
         request,
@@ -704,6 +740,11 @@ def video_create_view(request):
             exc,
             "Video upload failed. Please verify Cloudinary is configured correctly and try again.",
         )
+    except DatabaseError as exc:
+        return cloudinary_upload_error_response(
+            exc,
+            "Video upload failed. Please try again with a shorter file name.",
+        )
     return refresh_payload_response(
         request,
         "Video uploaded successfully.",
@@ -725,6 +766,11 @@ def video_update_view(request, video_id):
         return cloudinary_upload_error_response(
             exc,
             "Video upload failed. Please verify Cloudinary is configured correctly and try again.",
+        )
+    except DatabaseError as exc:
+        return cloudinary_upload_error_response(
+            exc,
+            "Video upload failed. Please try again with a shorter file name.",
         )
     return refresh_payload_response(
         request,
@@ -883,11 +929,12 @@ def video_stream_view(request, username, video_id):
     if not video.has_uploaded_file:
         raise Http404("Uploaded video not found.")
 
-    if not uses_local_filesystem_storage(video.uploaded_file):
+    media_handle = open_local_media_file(video.uploaded_file)
+    if media_handle is None:
         return redirect(video.uploaded_file.url)
 
     guessed_type = mimetypes.guess_type(video.uploaded_file.name)[0] or "video/mp4"
-    response = FileResponse(video.uploaded_file.open("rb"), content_type=guessed_type)
+    response = FileResponse(media_handle, content_type=guessed_type)
     response["Content-Disposition"] = (
         f'inline; filename="{video.uploaded_file.name.rsplit("/", 1)[-1]}"'
     )
@@ -901,11 +948,12 @@ def profile_avatar_view(request, username):
     if not profile.avatar_file:
         raise Http404("Avatar not found.")
 
-    if not uses_local_filesystem_storage(profile.avatar_file):
+    media_handle = open_local_media_file(profile.avatar_file)
+    if media_handle is None:
         return redirect(profile.avatar_file.url)
 
     guessed_type = mimetypes.guess_type(profile.avatar_file.name)[0] or "image/jpeg"
-    response = FileResponse(profile.avatar_file.open("rb"), content_type=guessed_type)
+    response = FileResponse(media_handle, content_type=guessed_type)
     response["Content-Disposition"] = (
         f'inline; filename="{profile.avatar_file.name.rsplit("/", 1)[-1]}"'
     )
@@ -927,11 +975,12 @@ def video_download_view(request, username, video_id):
     if not video.has_uploaded_file:
         raise Http404("Uploaded video not found.")
 
-    if not uses_local_filesystem_storage(video.uploaded_file):
+    media_handle = open_local_media_file(video.uploaded_file)
+    if media_handle is None:
         return redirect(cloudinary_download_redirect_url(video.uploaded_file, resource_type="video"))
 
     guessed_type = mimetypes.guess_type(video.uploaded_file.name)[0] or "application/octet-stream"
-    response = FileResponse(video.uploaded_file.open("rb"), content_type=guessed_type)
+    response = FileResponse(media_handle, content_type=guessed_type)
     response["Content-Disposition"] = (
         f'attachment; filename="{video.uploaded_file.name.rsplit("/", 1)[-1]}"'
     )

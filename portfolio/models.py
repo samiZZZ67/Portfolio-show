@@ -1,4 +1,5 @@
 import uuid
+from pathlib import PurePosixPath
 from urllib.parse import quote
 
 from django.conf import settings
@@ -7,6 +8,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.files.storage import Storage, default_storage
 from django.db import models
 from django.utils.deconstruct import deconstructible
+from django.utils.text import slugify
 
 
 class VideoContentType(models.TextChoices):
@@ -43,11 +45,21 @@ class VideoReactionType(models.TextChoices):
 
 
 def profile_avatar_upload_to(instance, filename):
-    return f"profile_avatars/{instance.user.username}/{filename}"
+    normalized_filename = compact_upload_filename(filename, default_stem="avatar", max_stem_length=20)
+    return f"a/{instance.user_id}/{normalized_filename}"
 
 
 def portfolio_video_upload_to(instance, filename):
-    return f"portfolio_videos/{instance.profile.user.username}/{instance.id}/{filename}"
+    normalized_filename = compact_upload_filename(filename, default_stem="video", max_stem_length=24)
+    return f"v/{instance.profile_id}/{instance.id.hex[:12]}-{normalized_filename}"
+
+
+def compact_upload_filename(filename, default_stem="file", max_stem_length=24):
+    path = PurePosixPath(str(filename))
+    suffix = path.suffix.lower()[:10]
+    raw_stem = path.stem
+    normalized_stem = slugify(raw_stem).strip("-_") or default_stem
+    return f"{normalized_stem[:max_stem_length]}{suffix}"
 
 
 @deconstructible
@@ -104,7 +116,7 @@ class EditorProfile(models.Model):
     )
     cname = models.CharField(max_length=150, blank=True)
     bio = models.TextField(blank=True, default=default_bio)
-    avatar_file = models.FileField(upload_to=profile_avatar_upload_to, blank=True)
+    avatar_file = models.FileField(upload_to=profile_avatar_upload_to, blank=True, max_length=500)
     avatar_url = models.URLField(max_length=500, blank=True)
     telegram = models.CharField(max_length=64, blank=True)
     whatsapp = models.CharField(max_length=32, blank=True)
@@ -179,6 +191,7 @@ class PortfolioVideo(models.Model):
     uploaded_file = models.FileField(
         upload_to=portfolio_video_upload_to,
         blank=True,
+        max_length=500,
         storage=PortfolioVideoStorage(),
     )
     thumbnail_url = models.URLField(max_length=500, blank=True)

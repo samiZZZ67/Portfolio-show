@@ -18,6 +18,8 @@ from .models import (
     VideoSourceType,
 )
 
+MAX_VIDEO_UPLOAD_SIZE_BYTES = 95 * 1024 * 1024
+
 RESERVED_USERNAMES = {
     "admin",
     "api",
@@ -483,8 +485,8 @@ class VideoForm(forms.ModelForm):
 
     def clean_uploaded_file(self):
         uploaded_file = self.cleaned_data.get("uploaded_file")
-        if uploaded_file and uploaded_file.size > 250 * 1024 * 1024:
-            raise ValidationError("Uploaded videos must be 250 MB or smaller.")
+        if uploaded_file and uploaded_file.size > MAX_VIDEO_UPLOAD_SIZE_BYTES:
+            raise ValidationError("Uploaded videos must be 95 MB or smaller.")
         return uploaded_file
 
     def clean(self):

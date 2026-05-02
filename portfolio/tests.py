@@ -8,6 +8,7 @@ from django.urls import reverse
 
 from .models import (
     AccountRole,
+    EditorProfile,
     FollowRelationship,
     PortfolioVideo,
     VideoReaction,
@@ -16,6 +17,7 @@ from .models import (
     VideoContentType,
     VideoReactionType,
     VideoSourceType,
+    compact_upload_filename,
 )
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
@@ -466,6 +468,52 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(video.video_source, VideoSourceType.BOTH)
         self.assertEqual(video.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
         self.assertTrue(video.uploaded_file.name.endswith("campaign.mov"))
+
+    def test_video_upload_path_stays_short_for_long_filenames(self):
+        user = User.objects.create_user(
+            username="EditorLongName",
+            password="SecurePass123!",
+            email="editorlongname@example.com",
+        )
+        self.client.force_login(user)
+
+        uploaded_file = SimpleUploadedFile(
+            "From_3M_to_a_1_4B_empire_selli_btHmVce.mp4",
+            b"fake-video-content",
+            content_type="video/mp4",
+        )
+        response = self.client.post(
+            reverse("portfolio:video-create"),
+            {
+                "title": "Compact Upload Path",
+                "url": "",
+                "video_source": VideoSourceType.UPLOAD,
+                "thumbnail_url": "",
+                "content_type": VideoContentType.SHORT,
+                "category": VideoCategory.SOCIAL_MEDIA,
+                "duration": "0:30",
+                "uploaded_file": uploaded_file,
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        video = PortfolioVideo.objects.get(profile=user.editor_profile)
+        self.assertLess(len(video.uploaded_file.name), 100)
+        self.assertTrue(video.uploaded_file.name.startswith(f"v/{user.editor_profile.id}/"))
+        self.assertTrue(video.uploaded_file.name.endswith(".mp4"))
+
+    def test_cloudinary_media_fields_allow_long_public_ids(self):
+        self.assertEqual(EditorProfile._meta.get_field("avatar_file").max_length, 500)
+        self.assertEqual(PortfolioVideo._meta.get_field("uploaded_file").max_length, 500)
+
+    def test_compact_upload_filename_preserves_extension(self):
+        compact_name = compact_upload_filename(
+            "From_3M_to_a_1_4B_empire_selli_btHmVce.mp4",
+            default_stem="video",
+            max_stem_length=16,
+        )
+        self.assertTrue(compact_name.endswith(".mp4"))
+        self.assertLessEqual(len(compact_name.rsplit(".", 1)[0]), 16)
 
     def test_video_like_and_star_rating_flow(self):
         owner = User.objects.create_user(

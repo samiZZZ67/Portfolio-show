@@ -22,6 +22,7 @@
   const LIKE_META = { emoji: "\uD83D\uDC4D", label: "Like" };
   const STAR_FILLED = "\u2605";
   const STAR_EMPTY = "\u2606";
+  const MAX_VIDEO_UPLOAD_SIZE_BYTES = 95 * 1024 * 1024;
 
   function syncAuthGlobals(user, role) {
     window.currentUser = user || null;
@@ -127,7 +128,27 @@
       credentials: "same-origin",
     });
 
-    const payload = await response.json();
+    const contentType = response.headers.get("content-type") || "";
+    let payload = null;
+    if (contentType.includes("application/json")) {
+      payload = await response.json();
+    } else {
+      const text = await response.text();
+      const normalized = text.trim();
+
+      if (response.status === 413) {
+        throw new Error("This video is too large to upload here. Please keep it under 95 MB.");
+      }
+      if (!response.ok) {
+        throw new Error(
+          normalized.startsWith("<")
+            ? "Upload failed before the server could return JSON. Please verify the file is under 95 MB and try again."
+            : normalized || "Upload failed."
+        );
+      }
+      throw new Error("The server returned an unexpected response format.");
+    }
+
     if (!response.ok) {
       if (response.status === 401) {
         replaceState({ editors: window.__elaEditors || [], current_user: null, current_user_role: null });
@@ -1532,6 +1553,14 @@
 
     try {
       const formData = new FormData();
+      const selectedFile = fileInput && fileInput.files ? fileInput.files[0] : null;
+      if (
+        selectedFile &&
+        selectedFile.size > MAX_VIDEO_UPLOAD_SIZE_BYTES
+      ) {
+        throw new Error("This video is too large to upload here. Please keep it under 95 MB.");
+      }
+
       formData.append("title", document.getElementById("videoTitle").value.trim());
       formData.append("url", document.getElementById("videoUrl").value.trim());
       formData.append("video_source", sourceMode);
@@ -1539,8 +1568,8 @@
       formData.append("content_type", document.getElementById("videoType").value);
       formData.append("category", document.getElementById("videoCategory").value);
       formData.append("duration", document.getElementById("videoDuration").value.trim());
-      if (fileInput && fileInput.files && fileInput.files[0]) {
-        formData.append("uploaded_file", fileInput.files[0]);
+      if (selectedFile) {
+        formData.append("uploaded_file", selectedFile);
       }
 
       const payload = await postMultipartForm(endpoint, formData);
