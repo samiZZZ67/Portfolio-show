@@ -515,6 +515,40 @@ class PortfolioApiTests(TestCase):
         self.assertTrue(compact_name.endswith(".mp4"))
         self.assertLessEqual(len(compact_name.rsplit(".", 1)[0]), 16)
 
+    def test_admin_index_uses_custom_dashboard(self):
+        admin_user = User.objects.create_superuser(
+            username="AdminUser",
+            password="SecurePass123!",
+            email="admin@example.com",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ela-sam Admin")
+        self.assertContains(response, "Portfolio Control Center")
+        self.assertContains(response, "Everything important is one click away.")
+
+    def test_admin_user_change_page_shows_portfolio_profile_inline(self):
+        admin_user = User.objects.create_superuser(
+            username="AdminInline",
+            password="SecurePass123!",
+            email="admininline@example.com",
+        )
+        managed_user = User.objects.create_user(
+            username="ManagedUser",
+            password="SecurePass123!",
+            email="managed@example.com",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("admin:auth_user_change", args=[managed_user.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Editor profile")
+        self.assertContains(response, "Open public profile")
+
     def test_video_like_and_star_rating_flow(self):
         owner = User.objects.create_user(
             username="ReactionOwner",

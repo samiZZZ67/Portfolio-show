@@ -1,0 +1,25 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | Ela-sam Admin{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'portfolio/css/admin.css' %}">
+{% endblock %}
+
+{% block branding %}
+<div class="portfolio-admin-brand">
+  <a class="portfolio-admin-brand__title" href="{% url 'admin:index' %}">Ela-sam Admin</a>
+  <p class="portfolio-admin-brand__subtitle">Manage users, portfolios, videos, and engagement from one web dashboard.</p>
+</div>
+{% endblock %}
+
+{% block nav-global %}
+<div class="portfolio-admin-toplinks">
+  <a href="{% url 'admin:auth_user_changelist' %}">Users</a>
+  <a href="{% url 'admin:portfolio_editorprofile_changelist' %}">Profiles</a>
+  <a href="{% url 'admin:portfolio_portfoliovideo_changelist' %}">Videos</a>
+  <a href="/" target="_blank" rel="noreferrer">Open site</a>
+</div>
+{% endblock %}
