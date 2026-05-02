@@ -1,5 +1,6 @@
 import html
 import json
+import logging
 import mimetypes
 import re
 from functools import wraps
@@ -39,6 +40,7 @@ DEFAULT_EDITORS_PATTERN = re.compile(
 )
 TITLE_PATTERN = re.compile(r"<title>.*?</title>", re.DOTALL | re.IGNORECASE)
 USERNAME_VALIDATOR = UnicodeUsernameValidator()
+logger = logging.getLogger(__name__)
 
 
 def json_error_response(form, status=400):
@@ -199,6 +201,17 @@ def cloudinary_download_redirect_url(field_file, resource_type):
         flags="attachment",
     )
     return download_url
+
+
+def cloudinary_upload_error_response(exc, user_message):
+    logger.exception("Cloudinary media operation failed: %s", exc)
+    payload = {
+        "ok": False,
+        "message": user_message,
+    }
+    if settings.DEBUG:
+        payload["details"] = str(exc)
+    return JsonResponse(payload, status=400)
 
 
 def like_summary(video, current_profile=None):
@@ -575,13 +588,10 @@ def signup_view(request):
         return json_error_response(form)
     try:
         user = form.save()
-    except CloudinaryError:
-        return JsonResponse(
-            {
-                "ok": False,
-                "message": "Profile media upload failed. Please try again.",
-            },
-            status=400,
+    except CloudinaryError as exc:
+        return cloudinary_upload_error_response(
+            exc,
+            "Profile media upload failed. Please verify Cloudinary is configured correctly and try again.",
         )
     login(request, user)
     welcome_message = (
@@ -623,13 +633,10 @@ def profile_update_view(request):
         return json_error_response(form)
     try:
         form.save()
-    except CloudinaryError:
-        return JsonResponse(
-            {
-                "ok": False,
-                "message": "Profile media upload failed. Please try again.",
-            },
-            status=400,
+    except CloudinaryError as exc:
+        return cloudinary_upload_error_response(
+            exc,
+            "Profile media upload failed. Please verify Cloudinary is configured correctly and try again.",
         )
     return refresh_payload_response(
         request,
@@ -692,13 +699,10 @@ def video_create_view(request):
         video.profile = profile
         video.sort_order = profile.videos.count()
         video.save()
-    except CloudinaryError:
-        return JsonResponse(
-            {
-                "ok": False,
-                "message": "Video upload failed. Please upload a valid video file and try again.",
-            },
-            status=400,
+    except CloudinaryError as exc:
+        return cloudinary_upload_error_response(
+            exc,
+            "Video upload failed. Please verify Cloudinary is configured correctly and try again.",
         )
     return refresh_payload_response(
         request,
@@ -717,13 +721,10 @@ def video_update_view(request, video_id):
         return json_error_response(form)
     try:
         form.save()
-    except CloudinaryError:
-        return JsonResponse(
-            {
-                "ok": False,
-                "message": "Video upload failed. Please upload a valid video file and try again.",
-            },
-            status=400,
+    except CloudinaryError as exc:
+        return cloudinary_upload_error_response(
+            exc,
+            "Video upload failed. Please verify Cloudinary is configured correctly and try again.",
         )
     return refresh_payload_response(
         request,
