@@ -369,6 +369,9 @@ def build_bootstrap_payload(request):
     payload = {
         "current_user": request.user.username if request.user.is_authenticated else None,
         "current_user_role": current_profile.role if current_profile else None,
+        "current_user_can_access_admin": bool(
+            request.user.is_authenticated and request.user.is_staff
+        ),
         "editors": [],
     }
     for profile in visible_profiles(request):

@@ -119,6 +119,36 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(response.json()["message"], "Login successful.")
         self.assertEqual(self.client.session.get("_auth_user_id"), str(user.pk))
 
+    def test_bootstrap_marks_staff_users_as_admin_capable(self):
+        admin_user = User.objects.create_superuser(
+            username="AdminBootstrap",
+            password="SecurePass123!",
+            email="adminbootstrap@example.com",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("portfolio:bootstrap"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["current_user"], "AdminBootstrap")
+        self.assertTrue(payload["current_user_can_access_admin"])
+
+    def test_bootstrap_marks_regular_users_as_not_admin_capable(self):
+        user = User.objects.create_user(
+            username="RegularBootstrap",
+            password="SecurePass123!",
+            email="regularbootstrap@example.com",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("portfolio:bootstrap"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["current_user"], "RegularBootstrap")
+        self.assertFalse(payload["current_user_can_access_admin"])
+
     def test_editor_profile_link_is_public_and_case_insensitive(self):
         user = User.objects.create_user(
             username="ElaShare",

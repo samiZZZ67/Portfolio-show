@@ -24,9 +24,10 @@
   const STAR_EMPTY = "\u2606";
   const MAX_VIDEO_UPLOAD_SIZE_BYTES = 95 * 1024 * 1024;
 
-  function syncAuthGlobals(user, role) {
+  function syncAuthGlobals(user, role, canAccessAdmin) {
     window.currentUser = user || null;
     window.currentUserRole = role || null;
+    window.currentUserCanAccessAdmin = Boolean(canAccessAdmin);
     try {
       currentUser = window.currentUser;
     } catch (error) {
@@ -75,7 +76,11 @@
     const editors = Array.isArray(payload.editors) ? payload.editors : [];
     window.__elaBootstrap = payload;
     window.__elaEditors = editors;
-    syncAuthGlobals(payload.current_user || null, payload.current_user_role || null);
+    syncAuthGlobals(
+      payload.current_user || null,
+      payload.current_user_role || null,
+      payload.current_user_can_access_admin || false
+    );
 
     if (window.currentUser) {
       localStorage.setItem("ela_current_user", window.currentUser);
@@ -109,7 +114,12 @@
     const payload = await response.json();
     if (!response.ok) {
       if (response.status === 401) {
-        replaceState({ editors: window.__elaEditors || [], current_user: null, current_user_role: null });
+        replaceState({
+          editors: window.__elaEditors || [],
+          current_user: null,
+          current_user_role: null,
+          current_user_can_access_admin: false,
+        });
         window.openModal("loginModal");
       }
       throw new Error(payload.message || "Request failed.");
@@ -151,7 +161,12 @@
 
     if (!response.ok) {
       if (response.status === 401) {
-        replaceState({ editors: window.__elaEditors || [], current_user: null, current_user_role: null });
+        replaceState({
+          editors: window.__elaEditors || [],
+          current_user: null,
+          current_user_role: null,
+          current_user_can_access_admin: false,
+        });
         window.openModal("loginModal");
       }
       throw new Error(payload.message || "Request failed.");
@@ -170,7 +185,12 @@
     const payload = await response.json();
     if (!response.ok) {
       if (response.status === 401) {
-        replaceState({ editors: window.__elaEditors || [], current_user: null, current_user_role: null });
+        replaceState({
+          editors: window.__elaEditors || [],
+          current_user: null,
+          current_user_role: null,
+          current_user_can_access_admin: false,
+        });
         window.openModal("loginModal");
       }
       throw new Error(payload.message || "Request failed.");
@@ -199,6 +219,10 @@
 
   function isCurrentUserClient() {
     return window.currentUserRole === "client";
+  }
+
+  function openAdminPanel() {
+    window.location.href = "/admin/";
   }
 
   function currentViewerProfile() {
@@ -770,16 +794,24 @@
 
     if (desktopAuthActions) {
       if (window.currentUser) {
+        const adminButtonMarkup = window.currentUserCanAccessAdmin
+          ? `<button type="button" class="btn-secondary btn-sm" id="desktopAdminBtn">` +
+            `<i class="fas fa-shield-halved"></i> Admin</button>`
+          : "";
         desktopAuthActions.innerHTML =
           `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">` +
           `<div style="padding:8px 12px;border:1px solid var(--border);border-radius:999px;color:var(--text-secondary);font-size:0.82rem;">` +
           `Signed in as <strong style="color:var(--text-primary);">${escapeHtml(signedInLabel)}</strong>` +
           `</div>` +
+          adminButtonMarkup +
           `<button type="button" class="btn-secondary btn-sm" id="desktopMyProfileBtn">` +
           `<i class="fas fa-id-badge"></i> My Profile</button>` +
           `<button type="button" class="btn-primary btn-sm" id="desktopLogoutBtn">` +
           `<i class="fas fa-sign-out-alt"></i> Logout</button>` +
           `</div>`;
+        bindClick("desktopAdminBtn", function () {
+          openAdminPanel();
+        });
         bindClick("desktopMyProfileBtn", function () {
           window.navigate("profile", window.currentUser);
         });
@@ -798,16 +830,25 @@
 
     if (mobileAuthActions) {
       if (window.currentUser) {
+        const mobileAdminButtonMarkup = window.currentUserCanAccessAdmin
+          ? `<button type="button" class="btn-secondary" id="mobileAdminBtn" style="justify-content:center;">` +
+            `<i class="fas fa-shield-halved"></i> Admin Panel</button>`
+          : "";
         mobileAuthActions.innerHTML =
           `<div style="display:flex;flex-direction:column;gap:12px;">` +
           `<div style="padding:12px 14px;border:1px solid var(--border);border-radius:16px;color:var(--text-secondary);font-size:0.9rem;text-align:center;">` +
           `Signed in as <strong style="color:var(--text-primary);">${escapeHtml(signedInLabel)}</strong>` +
           `</div>` +
+          mobileAdminButtonMarkup +
           `<button type="button" class="btn-secondary" id="mobileMyProfileBtn" style="justify-content:center;">` +
           `<i class="fas fa-id-badge"></i> My Profile</button>` +
           `<button type="button" class="btn-primary" id="mobileLogoutBtn" style="justify-content:center;">` +
           `<i class="fas fa-sign-out-alt"></i> Logout</button>` +
           `</div>`;
+        bindClick("mobileAdminBtn", function () {
+          closeMobileMenuIfOpen();
+          openAdminPanel();
+        });
         bindClick("mobileMyProfileBtn", function () {
           closeMobileMenuIfOpen();
           window.navigate("profile", window.currentUser);
