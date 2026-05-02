@@ -1,8 +1,11 @@
 import shutil
 import tempfile
+from io import StringIO
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -59,6 +62,56 @@ class PortfolioApiTests(TestCase):
 
         self.assertNotIn("display:none", desktop_admin_slice)
         self.assertNotIn("display:none", mobile_admin_slice)
+
+    def test_ensure_admin_user_creates_superuser_from_environment(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "DJANGO_SUPERUSER_USERNAME": "renderadmin",
+                "DJANGO_SUPERUSER_EMAIL": "renderadmin@example.com",
+                "DJANGO_SUPERUSER_PASSWORD": "RenderPass123!",
+            },
+            clear=False,
+        ):
+            output = StringIO()
+            call_command("ensure_admin_user", stdout=output)
+
+        user = User.objects.get(username="renderadmin")
+        self.assertEqual(user.email, "renderadmin@example.com")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password("RenderPass123!"))
+        self.assertIn("Created admin user 'renderadmin'.", output.getvalue())
+
+    def test_ensure_admin_user_repairs_existing_user_permissions(self):
+        user = User.objects.create_user(
+            username="existingrenderadmin",
+            email="old@example.com",
+            password="OldPass123!",
+        )
+        user.is_staff = False
+        user.is_superuser = False
+        user.is_active = True
+        user.save()
+
+        with patch.dict(
+            "os.environ",
+            {
+                "DJANGO_SUPERUSER_USERNAME": "existingrenderadmin",
+                "DJANGO_SUPERUSER_EMAIL": "new@example.com",
+                "DJANGO_SUPERUSER_PASSWORD": "NewPass123!",
+            },
+            clear=False,
+        ):
+            output = StringIO()
+            call_command("ensure_admin_user", stdout=output)
+
+        user.refresh_from_db()
+        self.assertEqual(user.email, "new@example.com")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password("NewPass123!"))
+        self.assertIn("Verified admin user 'existingrenderadmin'.", output.getvalue())
 
     def test_signup_creates_user_profile_and_session(self):
         response = self.client.post(
