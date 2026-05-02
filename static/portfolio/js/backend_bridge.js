@@ -770,7 +770,6 @@
     }
 
     if (desktopAdminLink) {
-      desktopAdminLink.style.display = window.currentUserCanAccessAdmin ? "" : "none";
       desktopAdminLink.onclick = function () {
         openAdminPanel();
         return false;
@@ -790,7 +789,6 @@
     }
 
     if (mobileAdminLink) {
-      mobileAdminLink.style.display = window.currentUserCanAccessAdmin ? "" : "none";
       mobileAdminLink.onclick = function () {
         closeMobileMenuIfOpen();
         openAdminPanel();

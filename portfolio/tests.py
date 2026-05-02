@@ -41,6 +41,25 @@ class PortfolioApiTests(TestCase):
         self.assertIn("portfolio/js/backend_bridge.js", body)
         self.assertNotIn("password: 'demo123'", body)
 
+    def test_frontend_shell_shows_admin_link_for_anonymous_visitors(self):
+        response = self.client.get(reverse("portfolio:home"))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+
+        desktop_account_index = body.index('id="desktopAccountLink"')
+        desktop_admin_index = body.index('id="desktopAdminLink"')
+        mobile_account_index = body.index('id="mobileAccountLink"')
+        mobile_admin_index = body.index('id="mobileAdminLink"')
+
+        self.assertLess(desktop_account_index, desktop_admin_index)
+        self.assertLess(mobile_account_index, mobile_admin_index)
+
+        desktop_admin_slice = body[max(0, desktop_admin_index - 120): desktop_admin_index + 160]
+        mobile_admin_slice = body[max(0, mobile_admin_index - 120): mobile_admin_index + 160]
+
+        self.assertNotIn("display:none", desktop_admin_slice)
+        self.assertNotIn("display:none", mobile_admin_slice)
+
     def test_signup_creates_user_profile_and_session(self):
         response = self.client.post(
             reverse("portfolio:signup"),
