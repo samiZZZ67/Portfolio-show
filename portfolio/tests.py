@@ -143,6 +143,29 @@ class PortfolioApiTests(TestCase):
             any(editor["username"] == "ElaShare" for editor in bootstrap["editors"])
         )
 
+    def test_direct_profile_url_handles_unicode_seo_content(self):
+        user = User.objects.create_user(
+            username="ElaUnicode",
+            password="CorrectHorse123!",
+            email="elaunicode@example.com",
+        )
+        user.editor_profile.cname = "Ela's"
+        user.editor_profile.bio = (
+            "Editing is more than cutting clips \u2014 it\u2019s about rhythm, emotion, and meaning."
+        )
+        user.editor_profile.phone = "+251900000099"
+        user.editor_profile.save(update_fields=["cname", "bio", "phone"])
+
+        response = self.client.get("/ElaUnicode/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ela&#x27;s (@ElaUnicode)", status_code=200)
+        self.assertContains(response, "portfolio/js/backend_bridge.js", status_code=200)
+
+    def test_invalid_profile_username_returns_friendly_404(self):
+        response = self.client.get("/Bad!Name/")
+        self.assertEqual(response.status_code, 404)
+        self.assertContains(response, "We couldn", status_code=404)
+
     def test_search_endpoint_filters_existing_portfolios(self):
         response = self.client.get(
             reverse("portfolio:search"),

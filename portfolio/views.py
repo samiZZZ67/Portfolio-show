@@ -7,6 +7,8 @@ from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth import login, logout
+from django.contrib.auth.validators import UnicodeUsernameValidator
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, F, Prefetch
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
@@ -33,6 +35,9 @@ DEFAULT_EDITORS_PATTERN = re.compile(
     re.DOTALL,
 )
 TITLE_PATTERN = re.compile(r"<title>.*?</title>", re.DOTALL | re.IGNORECASE)
+USERNAME_VALIDATOR = UnicodeUsernameValidator()
+
+
 def json_error_response(form, status=400):
     errors = form.errors.get_json_data()
     message = "Please correct the highlighted fields."
@@ -116,7 +121,10 @@ def profile_queryset():
 
 def viewer_profile(request):
     if request.user.is_authenticated:
-        return request.user.editor_profile
+        try:
+            return request.user.editor_profile
+        except EditorProfile.DoesNotExist:
+            return None
     return None
 
 
@@ -130,8 +138,33 @@ def visible_profiles(request):
     return [profile for profile in profile_queryset() if visible_profile(profile, request)]
 
 
+def normalize_public_username(username):
+    if not isinstance(username, str):
+        return None
+
+    normalized_username = username.strip()
+    if normalized_username != username or not normalized_username or len(normalized_username) > 150:
+        return None
+
+    try:
+        USERNAME_VALIDATOR(normalized_username)
+    except ValidationError:
+        return None
+    return normalized_username
+
+
 def find_profile_by_username(username):
-    return profile_queryset().filter(user__username__iexact=username).first()
+    normalized_username = normalize_public_username(username)
+    if not normalized_username:
+        return None
+    return profile_queryset().filter(user__username__iexact=normalized_username).first()
+
+
+def get_profile_by_username_or_404(username):
+    normalized_username = normalize_public_username(username)
+    if not normalized_username:
+        raise Http404("Profile not found.")
+    return get_object_or_404(profile_queryset(), user__username__iexact=normalized_username)
 
 
 def profile_avatar_src(profile):
@@ -382,9 +415,10 @@ def render_frontend_html(request, requested_profile=None):
     html_source = sanitize_frontend_html(FRONTEND_SOURCE.read_text(encoding="utf-8"))
     seo_injection = build_seo_injection(request, requested_profile=requested_profile)
     bootstrap_json = json.dumps(bootstrap_payload).replace("<", "\\u003c")
+    safe_seo_injection = seo_injection.strip()
 
     if TITLE_PATTERN.search(html_source):
-        html_source = TITLE_PATTERN.sub(seo_injection.strip(), html_source, count=1)
+        html_source = TITLE_PATTERN.sub(lambda _match: safe_seo_injection, html_source, count=1)
     elif "</head>" in html_source:
         html_source = html_source.replace("</head>", f"{seo_injection}</head>", 1)
 
@@ -425,14 +459,14 @@ def get_owned_video(user, video_id):
 
 
 def get_visible_video(request, username, video_id):
-    profile = find_profile_by_username(username)
+    profile = get_profile_by_username_or_404(username)
     if not profile or not visible_profile(profile, request):
         raise Http404("Profile not found.")
     return get_object_or_404(profile.videos, pk=video_id)
 
 
 def get_visible_profile(request, username):
-    profile = find_profile_by_username(username)
+    profile = get_profile_by_username_or_404(username)
     if not profile or not visible_profile(profile, request):
         raise Http404("Profile not found.")
     return profile
@@ -455,6 +489,8 @@ def friendly_not_found_response(request, requested_path="", status=404):
 def frontend_shell(request, username=None):
     requested_profile = None
     if username:
+        if not normalize_public_username(username):
+            return friendly_not_found_response(request, requested_path=f"/{username}/", status=404)
         requested_profile = find_profile_by_username(username)
         if not requested_profile or not visible_profile(requested_profile, request):
             return friendly_not_found_response(request, requested_path=f"/{username}/", status=404)
