@@ -573,6 +573,13 @@ textarea.input-field { resize: vertical; min-height: 100px; }
     <div style="display:flex;align-items:center;gap:28px;" class="desktop-nav">
       <a href="#" class="nav-link" onclick="navigate('home');return false;">Home</a>
       <a href="#" class="nav-link" onclick="navigate('discover');return false;">Discover</a>
+      <a
+        href="/admin/"
+        class="nav-link"
+        id="desktopAdminLink"
+        style="display:none;"
+        onclick="window.location.href='/admin/';return false;"
+      >Admin</a>
       <a href="#" class="nav-link" id="desktopAccountLink" onclick="openModal('loginModal');return false;">Sign In</a>
     </div>
 
@@ -599,6 +606,13 @@ textarea.input-field { resize: vertical; min-height: 100px; }
   <div style="display:flex;flex-direction:column;gap:20px;">
     <a href="#" class="nav-link" style="font-size:18px;" onclick="navigate('home');toggleMobileMenu();return false;">Home</a>
     <a href="#" class="nav-link" style="font-size:18px;" onclick="navigate('discover');toggleMobileMenu();return false;">Discover</a>
+    <a
+      href="/admin/"
+      class="nav-link"
+      id="mobileAdminLink"
+      style="font-size:18px;display:none;"
+      onclick="window.location.href='/admin/';toggleMobileMenu();return false;"
+    >Admin</a>
     <a href="#" class="nav-link" id="mobileAccountLink" style="font-size:18px;" onclick="openModal('loginModal');toggleMobileMenu();return false;">Sign In</a>
     <hr style="border-color:var(--border);">
     <div class="theme-switcher" style="justify-content:center;">

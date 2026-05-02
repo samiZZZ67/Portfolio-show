@@ -748,7 +748,9 @@
   }
 
   function updateNavigationAuth() {
+    const desktopAdminLink = document.getElementById("desktopAdminLink");
     const desktopAccountLink = document.getElementById("desktopAccountLink");
+    const mobileAdminLink = document.getElementById("mobileAdminLink");
     const mobileAccountLink = document.getElementById("mobileAccountLink");
     const desktopAuthActions = document.getElementById("desktopAuthActions");
     const mobileAuthActions = document.getElementById("mobileAuthActions");
@@ -767,6 +769,14 @@
       }
     }
 
+    if (desktopAdminLink) {
+      desktopAdminLink.style.display = window.currentUserCanAccessAdmin ? "" : "none";
+      desktopAdminLink.onclick = function () {
+        openAdminPanel();
+        return false;
+      };
+    }
+
     if (desktopAccountLink) {
       desktopAccountLink.textContent = window.currentUser ? "Dashboard" : "Sign In";
       desktopAccountLink.onclick = function () {
@@ -775,6 +785,15 @@
         } else {
           window.openModal("loginModal");
         }
+        return false;
+      };
+    }
+
+    if (mobileAdminLink) {
+      mobileAdminLink.style.display = window.currentUserCanAccessAdmin ? "" : "none";
+      mobileAdminLink.onclick = function () {
+        closeMobileMenuIfOpen();
+        openAdminPanel();
         return false;
       };
     }
@@ -794,24 +813,16 @@
 
     if (desktopAuthActions) {
       if (window.currentUser) {
-        const adminButtonMarkup = window.currentUserCanAccessAdmin
-          ? `<button type="button" class="btn-secondary btn-sm" id="desktopAdminBtn">` +
-            `<i class="fas fa-shield-halved"></i> Admin</button>`
-          : "";
         desktopAuthActions.innerHTML =
           `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">` +
           `<div style="padding:8px 12px;border:1px solid var(--border);border-radius:999px;color:var(--text-secondary);font-size:0.82rem;">` +
           `Signed in as <strong style="color:var(--text-primary);">${escapeHtml(signedInLabel)}</strong>` +
           `</div>` +
-          adminButtonMarkup +
           `<button type="button" class="btn-secondary btn-sm" id="desktopMyProfileBtn">` +
           `<i class="fas fa-id-badge"></i> My Profile</button>` +
           `<button type="button" class="btn-primary btn-sm" id="desktopLogoutBtn">` +
           `<i class="fas fa-sign-out-alt"></i> Logout</button>` +
           `</div>`;
-        bindClick("desktopAdminBtn", function () {
-          openAdminPanel();
-        });
         bindClick("desktopMyProfileBtn", function () {
           window.navigate("profile", window.currentUser);
         });
@@ -830,25 +841,16 @@
 
     if (mobileAuthActions) {
       if (window.currentUser) {
-        const mobileAdminButtonMarkup = window.currentUserCanAccessAdmin
-          ? `<button type="button" class="btn-secondary" id="mobileAdminBtn" style="justify-content:center;">` +
-            `<i class="fas fa-shield-halved"></i> Admin Panel</button>`
-          : "";
         mobileAuthActions.innerHTML =
           `<div style="display:flex;flex-direction:column;gap:12px;">` +
           `<div style="padding:12px 14px;border:1px solid var(--border);border-radius:16px;color:var(--text-secondary);font-size:0.9rem;text-align:center;">` +
           `Signed in as <strong style="color:var(--text-primary);">${escapeHtml(signedInLabel)}</strong>` +
           `</div>` +
-          mobileAdminButtonMarkup +
           `<button type="button" class="btn-secondary" id="mobileMyProfileBtn" style="justify-content:center;">` +
           `<i class="fas fa-id-badge"></i> My Profile</button>` +
           `<button type="button" class="btn-primary" id="mobileLogoutBtn" style="justify-content:center;">` +
           `<i class="fas fa-sign-out-alt"></i> Logout</button>` +
           `</div>`;
-        bindClick("mobileAdminBtn", function () {
-          closeMobileMenuIfOpen();
-          openAdminPanel();
-        });
         bindClick("mobileMyProfileBtn", function () {
           closeMobileMenuIfOpen();
           window.navigate("profile", window.currentUser);

@@ -8,13 +8,17 @@ from django.urls import reverse
 
 from .models import (
     AccountRole,
+    DownloadRequestStatus,
     EditorProfile,
     FollowRelationship,
+    OwnerNotification,
     PortfolioVideo,
+    VideoDownloadRequest,
     VideoReaction,
     VideoStarRating,
     VideoCategory,
     VideoContentType,
+    VideoPlatform,
     VideoReactionType,
     VideoSourceType,
     compact_upload_filename,
@@ -544,6 +548,215 @@ class PortfolioApiTests(TestCase):
         )
         self.assertTrue(compact_name.endswith(".mp4"))
         self.assertLessEqual(len(compact_name.rsplit(".", 1)[0]), 16)
+
+    def test_secure_video_upload_endpoint_saves_metadata(self):
+        user = User.objects.create_user(
+            username="SecureUploader",
+            password="SecurePass123!",
+            email="secureuploader@example.com",
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("portfolio:secure-video-upload"),
+            {
+                "title": "Secure Reel",
+                "uploaded_file": SimpleUploadedFile(
+                    "secure-reel.mp4",
+                    b"fake-video-content",
+                    content_type="video/mp4",
+                ),
+                "platform": VideoPlatform.TIKTOK,
+                "content_type": VideoContentType.SHORT,
+                "category": VideoCategory.SOCIAL_MEDIA,
+                "duration": "0:30",
+                "original_width": 1080,
+                "original_height": 1920,
+                "watermark_enabled": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        video = PortfolioVideo.objects.get(profile=user.editor_profile, title="Secure Reel")
+        self.assertEqual(video.video_source, VideoSourceType.UPLOAD)
+        self.assertEqual(video.platform, VideoPlatform.TIKTOK)
+        self.assertEqual(video.original_filename, "secure-reel.mp4")
+        self.assertEqual(video.original_format, "mp4")
+        self.assertEqual(video.original_width, 1080)
+        self.assertEqual(video.original_height, 1920)
+
+    def test_public_secure_stream_session_returns_signed_local_endpoint(self):
+        user = User.objects.create_user(
+            username="SecureStreamer",
+            password="SecurePass123!",
+            email="securestreamer@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=user.editor_profile,
+            title="Secure Stream",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "secure-stream.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="secure-stream.mp4",
+            original_format="mp4",
+        )
+
+        response = self.client.get(reverse("portfolio:secure-video-stream", args=[video.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("/api/secure/videos/", payload["stream_url"])
+        self.assertTrue(payload["watermark"]["enabled"])
+
+        token = payload["stream_url"].split("token=", 1)[1]
+        stream_file_response = self.client.get(
+            reverse("portfolio:secure-video-stream-file", args=[video.id]),
+            {"token": token},
+        )
+        self.assertEqual(stream_file_response.status_code, 200)
+        self.assertIn("inline;", stream_file_response["Content-Disposition"])
+
+    def test_public_secure_like_and_rating_work_without_login(self):
+        user = User.objects.create_user(
+            username="SecureReactOwner",
+            password="SecurePass123!",
+            email="securereactowner@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=user.editor_profile,
+            title="Engagement Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "engagement.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="engagement.mp4",
+            original_format="mp4",
+        )
+
+        like_response = self.client.post(reverse("portfolio:secure-video-like", args=[video.id]))
+        self.assertEqual(like_response.status_code, 200)
+        self.assertEqual(like_response.json()["like_count"], 1)
+
+        rating_response = self.client.post(
+            reverse("portfolio:secure-video-rate", args=[video.id]),
+            {"score": 5},
+        )
+        self.assertEqual(rating_response.status_code, 200)
+        self.assertEqual(rating_response.json()["average_rating"], 5.0)
+        self.assertEqual(rating_response.json()["ratings_count"], 1)
+
+    def test_secure_download_request_requires_authentication(self):
+        user = User.objects.create_user(
+            username="SecureDownloadOwner",
+            password="SecurePass123!",
+            email="securedownloadowner@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=user.editor_profile,
+            title="Private Download Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "private-download.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="private-download.mp4",
+            original_format="mp4",
+        )
+
+        response = self.client.post(reverse("portfolio:secure-video-download-request", args=[video.id]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_secure_download_request_approval_and_download_flow(self):
+        owner = User.objects.create_user(
+            username="SecureOwner",
+            password="SecurePass123!",
+            email="secureowner@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Approved Download Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "approved-download.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="approved-download.mp4",
+            original_format="mp4",
+        )
+
+        requester = User.objects.create_user(
+            username="SecureClient",
+            password="SecurePass123!",
+            email="secureclient@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        self.client.force_login(requester)
+        create_response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Please approve this download."},
+        )
+        self.assertEqual(create_response.status_code, 201)
+        download_request = VideoDownloadRequest.objects.get(requester=requester, video=video)
+        self.assertEqual(download_request.status, DownloadRequestStatus.PENDING)
+        self.assertTrue(OwnerNotification.objects.filter(owner=owner, video=video).exists())
+
+        self.client.force_login(owner)
+        review_response = self.client.post(
+            reverse("portfolio:secure-owner-download-review", args=[download_request.id]),
+            {"status": DownloadRequestStatus.APPROVED, "owner_response_message": "Approved."},
+        )
+        self.assertEqual(review_response.status_code, 200)
+        download_request.refresh_from_db()
+        self.assertEqual(download_request.status, DownloadRequestStatus.APPROVED)
+
+        notifications_response = self.client.get(reverse("portfolio:secure-owner-notifications"))
+        self.assertEqual(notifications_response.status_code, 200)
+        self.assertGreaterEqual(len(notifications_response.json()), 1)
+
+        notification_id = notifications_response.json()[0]["id"]
+        mark_read_response = self.client.post(
+            reverse("portfolio:secure-owner-notification-read", args=[notification_id])
+        )
+        self.assertEqual(mark_read_response.status_code, 200)
+        self.assertTrue(mark_read_response.json()["is_read"])
+
+        self.client.force_login(requester)
+        link_response = self.client.get(reverse("portfolio:secure-video-download", args=[video.id]))
+        self.assertEqual(link_response.status_code, 200)
+        download_url = link_response.json()["download_url"]
+        token = download_url.split("token=", 1)[1]
+
+        file_response = self.client.get(
+            reverse("portfolio:secure-video-download-file", args=[video.id]),
+            {"token": token},
+        )
+        self.assertEqual(file_response.status_code, 200)
+        self.assertIn("attachment;", file_response["Content-Disposition"])
 
     def test_admin_index_uses_custom_dashboard(self):
         admin_user = User.objects.create_superuser(

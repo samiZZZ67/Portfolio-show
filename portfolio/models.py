@@ -37,11 +37,43 @@ class VideoSourceType(models.TextChoices):
     BOTH = "both", "Both"
 
 
+class VideoPlatform(models.TextChoices):
+    TIKTOK = "tiktok", "TikTok (9:16)"
+    YOUTUBE = "youtube", "YouTube (16:9)"
+    INSTAGRAM = "instagram", "Instagram / Reels"
+    FACEBOOK = "facebook", "Facebook"
+    OTHER = "other", "Other"
+
+
 class VideoReactionType(models.TextChoices):
     STAR = "star", "Star"
     LIKE = "like", "Like"
     LOVE = "love", "Love"
     FIRE = "fire", "Fire"
+
+
+class DownloadRequestStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
+
+
+class OwnerNotificationType(models.TextChoices):
+    DOWNLOAD_REQUEST = "download_request", "Download request"
+    DOWNLOAD_APPROVED = "download_approved", "Download approved"
+    DOWNLOAD_REJECTED = "download_rejected", "Download rejected"
+
+
+class VideoAccessEventType(models.TextChoices):
+    STREAM_TOKEN_ISSUED = "stream_token_issued", "Stream token issued"
+    STREAM_REDIRECTED = "stream_redirected", "Stream redirected"
+    LIKE_TOGGLED = "like_toggled", "Like toggled"
+    RATING_SUBMITTED = "rating_submitted", "Rating submitted"
+    DOWNLOAD_REQUESTED = "download_requested", "Download requested"
+    DOWNLOAD_APPROVED = "download_approved", "Download approved"
+    DOWNLOAD_REJECTED = "download_rejected", "Download rejected"
+    DOWNLOAD_LINK_ISSUED = "download_link_issued", "Download link issued"
+    DOWNLOAD_REDIRECTED = "download_redirected", "Download redirected"
 
 
 def profile_avatar_upload_to(instance, filename):
@@ -119,6 +151,7 @@ class EditorProfile(models.Model):
     avatar_file = models.FileField(upload_to=profile_avatar_upload_to, blank=True, max_length=500)
     avatar_url = models.URLField(max_length=500, blank=True)
     telegram = models.CharField(max_length=64, blank=True)
+    telegram_chat_id = models.CharField(max_length=64, blank=True)
     whatsapp = models.CharField(max_length=32, blank=True)
     phone = models.CharField(max_length=32, blank=True)
     other_contacts = models.JSONField(default=list, blank=True)
@@ -188,12 +221,26 @@ class PortfolioVideo(models.Model):
         choices=VideoSourceType.choices,
         default=VideoSourceType.LINK,
     )
+    platform = models.CharField(
+        max_length=20,
+        choices=VideoPlatform.choices,
+        default=VideoPlatform.OTHER,
+    )
     uploaded_file = models.FileField(
         upload_to=portfolio_video_upload_to,
         blank=True,
         max_length=500,
         storage=PortfolioVideoStorage(),
     )
+    storage_public_id = models.CharField(max_length=500, blank=True, db_index=True)
+    original_filename = models.CharField(max_length=255, blank=True)
+    original_format = models.CharField(max_length=32, blank=True)
+    original_width = models.PositiveIntegerField(null=True, blank=True)
+    original_height = models.PositiveIntegerField(null=True, blank=True)
+    original_bitrate = models.PositiveIntegerField(null=True, blank=True)
+    original_file_size = models.PositiveBigIntegerField(null=True, blank=True)
+    frame_rate = models.CharField(max_length=32, blank=True)
+    watermark_enabled = models.BooleanField(default=True)
     thumbnail_url = models.URLField(max_length=500, blank=True)
     content_type = models.CharField(
         max_length=5,
@@ -224,6 +271,16 @@ class PortfolioVideo(models.Model):
     @property
     def has_uploaded_file(self):
         return bool(self.uploaded_file)
+
+    @property
+    def secure_public_id(self):
+        return self.storage_public_id or (self.uploaded_file.name if self.uploaded_file else "")
+
+    @property
+    def aspect_ratio(self):
+        if self.original_width and self.original_height:
+            return f"{self.original_width}:{self.original_height}"
+        return ""
 
     def save(self, *args, **kwargs):
         if not self.duration:
@@ -324,3 +381,186 @@ class VideoStarRating(models.Model):
 
     def __str__(self):
         return f"{self.profile.user.username} rated {self.video_id} as {self.rating}"
+
+
+class VideoLike(models.Model):
+    video = models.ForeignKey(
+        PortfolioVideo,
+        on_delete=models.CASCADE,
+        related_name="public_likes",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="video_likes",
+        null=True,
+        blank=True,
+    )
+    viewer_hash = models.CharField(max_length=64, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["video", "viewer_hash"],
+                name="unique_public_video_like",
+            )
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"Like<{self.video_id}:{self.viewer_hash[:8]}>"
+
+
+class VideoRating(models.Model):
+    video = models.ForeignKey(
+        PortfolioVideo,
+        on_delete=models.CASCADE,
+        related_name="public_ratings",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="video_ratings_public",
+        null=True,
+        blank=True,
+    )
+    viewer_hash = models.CharField(max_length=64, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    score = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["video", "viewer_hash"],
+                name="unique_public_video_rating",
+            )
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"Rating<{self.video_id}:{self.score}>"
+
+
+class VideoDownloadRequest(models.Model):
+    requester = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="video_download_requests",
+    )
+    video = models.ForeignKey(
+        PortfolioVideo,
+        on_delete=models.CASCADE,
+        related_name="download_requests",
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=DownloadRequestStatus.choices,
+        default=DownloadRequestStatus.PENDING,
+    )
+    request_message = models.TextField(blank=True)
+    owner_response_message = models.TextField(blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_video_download_requests",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["requester", "video"],
+                name="unique_video_download_request_per_user",
+            )
+        ]
+        ordering = ["-requested_at"]
+
+    def __str__(self):
+        return f"{self.requester.username} -> {self.video_id} ({self.status})"
+
+
+class OwnerNotification(models.Model):
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="owner_notifications",
+    )
+    notification_type = models.CharField(
+        max_length=32,
+        choices=OwnerNotificationType.choices,
+    )
+    video = models.ForeignKey(
+        PortfolioVideo,
+        on_delete=models.CASCADE,
+        related_name="owner_notifications",
+    )
+    download_request = models.ForeignKey(
+        VideoDownloadRequest,
+        on_delete=models.CASCADE,
+        related_name="owner_notifications",
+        null=True,
+        blank=True,
+    )
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    payload = models.JSONField(default=dict, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.owner.username}: {self.title}"
+
+
+class VideoAccessLog(models.Model):
+    video = models.ForeignKey(
+        PortfolioVideo,
+        on_delete=models.CASCADE,
+        related_name="access_logs",
+    )
+    actor_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="video_access_logs",
+        null=True,
+        blank=True,
+    )
+    download_request = models.ForeignKey(
+        VideoDownloadRequest,
+        on_delete=models.SET_NULL,
+        related_name="access_logs",
+        null=True,
+        blank=True,
+    )
+    event_type = models.CharField(
+        max_length=32,
+        choices=VideoAccessEventType.choices,
+    )
+    viewer_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.video_id}:{self.event_type}"

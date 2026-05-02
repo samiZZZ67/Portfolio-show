@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "django.contrib.sitemaps",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "rest_framework",
     "portfolio.apps.PortfolioConfig",
 ]
 
@@ -163,3 +164,34 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     USE_X_FORWARDED_HOST = True
     SECURE_SSL_REDIRECT = IS_RENDER and "test" not in sys.argv
+
+SECURE_VIDEO_STREAM_TTL_SECONDS = int(os.environ.get("SECURE_VIDEO_STREAM_TTL_SECONDS", "300"))
+SECURE_VIDEO_DOWNLOAD_TTL_SECONDS = int(os.environ.get("SECURE_VIDEO_DOWNLOAD_TTL_SECONDS", "600"))
+SECURE_VIDEO_USE_CLOUDINARY_TOKENS = (
+    os.environ.get("SECURE_VIDEO_USE_CLOUDINARY_TOKENS", "true").lower() in {"1", "true", "yes"}
+)
+CLOUDINARY_AUTH_TOKEN_KEY = os.environ.get("CLOUDINARY_AUTH_TOKEN_KEY", "").strip()
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@portfolio-show.local")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_API_BASE = os.environ.get("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.BasicAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.AllowAny",
+    ),
+    "DEFAULT_THROTTLE_CLASSES": (),
+    "DEFAULT_THROTTLE_RATES": {
+        "secure_video_stream": "120/hour",
+        "secure_video_like": "20/hour",
+        "secure_video_rating": "20/hour",
+        "secure_video_upload": "20/hour",
+        "secure_video_download_request": "10/hour",
+        "secure_video_download_link": "30/hour",
+        "secure_owner_review": "60/hour",
+        "secure_owner_notifications": "120/hour",
+    },
+}

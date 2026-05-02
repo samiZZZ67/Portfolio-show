@@ -1,5 +1,5 @@
 from django.contrib.sitemaps.views import sitemap
-from django.urls import path, re_path
+from django.urls import include, path, re_path
 
 from . import views
 from .sitemaps import ProfileSitemap, StaticViewSitemap
@@ -14,6 +14,7 @@ urlpatterns = [
     path("", views.frontend_shell, name="home"),
     path("discover/", views.frontend_shell, name="discover"),
     path("dashboard/", views.frontend_shell, name="dashboard"),
+    path("api/secure/", include("portfolio.api_secure.urls")),
     path("robots.txt", views.robots_txt_view, name="robots"),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
     path("api/profiles/<str:username>/avatar/", views.profile_avatar_view, name="profile-avatar"),

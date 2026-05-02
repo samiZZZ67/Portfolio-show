@@ -1,6 +1,7 @@
 Django==5.2.13
 cloudinary==1.44.2
 django-cloudinary-storage==0.3.0
+djangorestframework==3.16.1
 dj-database-url==3.1.2
 gunicorn==25.3.0
 whitenoise==6.12.0
