@@ -13,6 +13,22 @@ class ScopedIPRateThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": ident}
 
 
+class ScopedUserOrIPRateThrottle(SimpleRateThrottle):
+    scope = ""
+
+    def get_cache_key(self, request, view):
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated:
+            ident = f"user:{user.pk}"
+        else:
+            forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+            if forwarded_for:
+                ident = forwarded_for.split(",")[0].strip()
+            else:
+                ident = self.get_ident(request)
+        return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
 class SecureVideoStreamThrottle(ScopedIPRateThrottle):
     scope = "secure_video_stream"
 
@@ -29,7 +45,7 @@ class SecureVideoUploadThrottle(ScopedIPRateThrottle):
     scope = "secure_video_upload"
 
 
-class SecureVideoDownloadRequestThrottle(ScopedIPRateThrottle):
+class SecureVideoDownloadRequestThrottle(ScopedUserOrIPRateThrottle):
     scope = "secure_video_download_request"
 
 

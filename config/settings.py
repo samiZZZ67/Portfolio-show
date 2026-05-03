@@ -221,7 +221,7 @@ REST_FRAMEWORK = {
         "secure_video_like": "20/hour",
         "secure_video_rating": "20/hour",
         "secure_video_upload": "20/hour",
-        "secure_video_download_request": "10/hour",
+        "secure_video_download_request": "60/hour",
         "secure_video_download_link": "30/hour",
         "secure_owner_review": "60/hour",
         "secure_owner_notifications": "120/hour",

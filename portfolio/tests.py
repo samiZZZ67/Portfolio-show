@@ -3,10 +3,11 @@ import tempfile
 from io import StringIO
 from unittest.mock import patch
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AnonymousUser, User
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -30,6 +31,7 @@ from .models import (
     VideoSourceType,
     compact_upload_filename,
 )
+from .api_secure.throttles import SecureVideoDownloadRequestThrottle
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
@@ -1116,6 +1118,35 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(download_request.telegram_chat_id, "99887766")
         self.assertEqual(download_request.telegram_message_id, "tg-message-123")
         mock_send_telegram.assert_called_once()
+
+    def test_secure_download_request_throttle_uses_authenticated_user_identity(self):
+        throttle = SecureVideoDownloadRequestThrottle()
+        factory = RequestFactory()
+        user = User.objects.create_user(
+            username="ThrottleOwner",
+            password="SecurePass123!",
+            email="throttleowner@example.com",
+        )
+
+        first_request = factory.post("/api/secure/videos/demo/download-request/")
+        first_request.user = user
+        first_request.META["REMOTE_ADDR"] = "127.0.0.1"
+
+        second_request = factory.post("/api/secure/videos/demo/download-request/")
+        second_request.user = user
+        second_request.META["REMOTE_ADDR"] = "203.0.113.10"
+
+        anonymous_request = factory.post("/api/secure/videos/demo/download-request/")
+        anonymous_request.user = AnonymousUser()
+        anonymous_request.META["REMOTE_ADDR"] = "127.0.0.1"
+
+        first_key = throttle.get_cache_key(first_request, view=None)
+        second_key = throttle.get_cache_key(second_request, view=None)
+        anonymous_key = throttle.get_cache_key(anonymous_request, view=None)
+
+        self.assertEqual(first_key, second_key)
+        self.assertNotEqual(first_key, anonymous_key)
+        self.assertIn(f"user:{user.pk}", first_key)
 
     def test_secure_download_request_resolves_owner_chat_id_from_telegram_updates(self):
         owner = User.objects.create_user(
