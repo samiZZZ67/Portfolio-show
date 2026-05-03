@@ -3,7 +3,7 @@ import logging
 import mimetypes
 from datetime import timedelta
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 import cloudinary.uploader
@@ -38,6 +38,87 @@ logger = logging.getLogger(__name__)
 
 STREAM_TOKEN_SALT = "secure-video-stream"
 DOWNLOAD_TOKEN_SALT = "secure-video-download"
+
+
+def normalize_telegram_username(value):
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return ""
+    if not normalized.startswith("@"):
+        normalized = f"@{normalized}"
+    return normalized
+
+
+def build_telegram_api_url(method, **query):
+    if not settings.TELEGRAM_BOT_TOKEN:
+        raise RuntimeError("Telegram bot token is not configured.")
+
+    base_url = f"{settings.TELEGRAM_API_BASE}/bot{settings.TELEGRAM_BOT_TOKEN}/{method}"
+    if not query:
+        return base_url
+    return f"{base_url}?{urlencode(query)}"
+
+
+def telegram_message_payload_from_update(update):
+    return (
+        update.get("message")
+        or update.get("edited_message")
+        or update.get("channel_post")
+        or update.get("edited_channel_post")
+        or {}
+    )
+
+
+def fetch_telegram_updates(*, limit=100):
+    query = {"limit": max(1, min(int(limit), 100))}
+    response = urlopen(build_telegram_api_url("getUpdates", **query), timeout=15)
+    payload = json.loads(response.read().decode("utf-8") or "{}")
+    if not payload.get("ok"):
+        raise RuntimeError(f"Telegram getUpdates failed: {payload}")
+    return payload.get("result", [])
+
+
+def resolve_profile_telegram_chat_id(profile):
+    if not profile:
+        return ""
+
+    existing_chat_id = str(profile.telegram_chat_id or "").strip()
+    if existing_chat_id:
+        return existing_chat_id
+
+    telegram_username = normalize_telegram_username(profile.telegram)
+    if not telegram_username:
+        return ""
+
+    try:
+        updates = fetch_telegram_updates(limit=100)
+    except Exception:
+        logger.exception(
+            "Failed to fetch Telegram updates while resolving chat ID for %s.",
+            getattr(profile.user, "username", "unknown-user"),
+        )
+        return ""
+
+    for update in reversed(updates):
+        message = telegram_message_payload_from_update(update)
+        from_user = message.get("from") or {}
+        chat = message.get("chat") or {}
+        candidate_username = normalize_telegram_username(from_user.get("username"))
+        candidate_chat_id = str(chat.get("id") or "").strip()
+        if candidate_username != telegram_username or not candidate_chat_id:
+            continue
+        if profile.telegram_chat_id != candidate_chat_id:
+            profile.telegram_chat_id = candidate_chat_id
+            try:
+                profile.save(update_fields=["telegram_chat_id"])
+            except Exception:
+                logger.exception(
+                    "Failed to persist Telegram chat ID for %s.",
+                    getattr(profile.user, "username", "unknown-user"),
+                )
+        return candidate_chat_id
+
+    return ""
 
 
 def get_client_ip(request):
@@ -345,10 +426,8 @@ def create_owner_notification(*, owner, notification_type, video, title, message
 def send_telegram_message(chat_id, text):
     if not chat_id:
         raise ValueError("Telegram chat ID is required.")
-    if not settings.TELEGRAM_BOT_TOKEN:
-        raise RuntimeError("Telegram bot token is not configured.")
 
-    telegram_url = f"{settings.TELEGRAM_API_BASE}/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+    telegram_url = build_telegram_api_url("sendMessage")
     payload = json.dumps(
         {
             "chat_id": chat_id,
@@ -434,6 +513,7 @@ def notify_admins_about_download_request_issue(download_request, *, reason):
 
 def notify_owner_about_download_request(download_request, request):
     owner = download_request.video.profile.user
+    owner_profile = download_request.video.profile
     title = "New download request"
     video_title = download_request.video_title_snapshot or download_request.video.title
     preview_url = download_request.video_preview_url_snapshot or download_request.video.thumbnail_url
@@ -475,10 +555,11 @@ def notify_owner_about_download_request(download_request, request):
         except Exception:
             logger.exception("Failed to send owner download request email.")
 
-    if download_request.video.profile.telegram_chat_id:
+    owner_chat_id = resolve_profile_telegram_chat_id(owner_profile)
+    if owner_chat_id:
         try:
-            message_id = send_telegram_message(download_request.video.profile.telegram_chat_id, message)
-            download_request.telegram_chat_id = download_request.video.profile.telegram_chat_id
+            message_id = send_telegram_message(owner_chat_id, message)
+            download_request.telegram_chat_id = owner_chat_id
             download_request.telegram_message_id = message_id
             download_request.save(update_fields=["telegram_chat_id", "telegram_message_id"])
             return {
@@ -554,7 +635,8 @@ def notify_requester_about_download_decision(download_request):
         except Exception:
             logger.exception("Failed to send requester download decision email.")
 
-    requester_chat_id = getattr(download_request.requester.editor_profile, "telegram_chat_id", "").strip()
+    requester_profile = getattr(download_request.requester, "editor_profile", None)
+    requester_chat_id = resolve_profile_telegram_chat_id(requester_profile)
     if requester_chat_id:
         try:
             send_telegram_message(requester_chat_id, message)

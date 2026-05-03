@@ -19,7 +19,7 @@ from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
 from django.urls import reverse
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import ContactForm, LoginForm, ProfileForm, SignUpForm, VideoForm, VideoMoveForm
@@ -1071,3 +1071,101 @@ def robots_txt_view(request):
 
 def friendly_not_found_view(request, requested_path=""):
     return friendly_not_found_response(request, requested_path=requested_path, status=404)
+
+
+@require_POST
+@csrf_exempt
+def telegram_webhook_view(request, secret):
+    """
+    Handle incoming Telegram webhook messages.
+    Used to capture chat_id when users start conversations with the bot.
+    """
+    if not settings.TELEGRAM_BOT_TOKEN:
+        return JsonResponse({"ok": False, "error": "Telegram not configured"}, status=500)
+
+    # Verify webhook secret
+    expected_secret = getattr(settings, 'TELEGRAM_WEBHOOK_SECRET', None)
+    if expected_secret and secret != expected_secret:
+        return JsonResponse({"ok": False, "error": "Invalid webhook secret"}, status=403)
+
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+
+    message = data.get('message', {})
+    chat = message.get('chat', {})
+    chat_id = chat.get('id')
+    text = message.get('text', '').strip()
+
+    if not chat_id:
+        return JsonResponse({"ok": True})  # Ignore messages without chat_id
+
+    # Handle different message types
+    if text.startswith('/start'):
+        # User started conversation with bot
+        from .models import EditorProfile
+
+        # Try to find user by telegram username if provided
+        telegram_username = chat.get('username')
+        if telegram_username:
+            # Normalize telegram username
+            normalized_telegram = telegram_username.lower()
+            if not normalized_telegram.startswith('@'):
+                normalized_telegram = f'@{normalized_telegram}'
+
+            try:
+                profile = EditorProfile.objects.get(telegram__iexact=normalized_telegram)
+                # Update chat_id if not set or different
+                if profile.telegram_chat_id != str(chat_id):
+                    profile.telegram_chat_id = str(chat_id)
+                    profile.save(update_fields=['telegram_chat_id'])
+                    logger.info(f"Updated chat_id for user {profile.user.username}: {chat_id}")
+
+                # Send welcome message
+                welcome_text = (
+                    f"Hello {profile.display_name}!\n\n"
+                    "Your Telegram is now connected to your portfolio account.\n"
+                    "You'll receive notifications here when clients request downloads of your videos.\n\n"
+                    f"Chat ID: {chat_id}"
+                )
+            except EditorProfile.DoesNotExist:
+                welcome_text = (
+                    f"Hello! I couldn't find a portfolio account linked to @{telegram_username}.\n\n"
+                    "To connect your Telegram:\n"
+                    "1. Sign up or log in to your portfolio account\n"
+                    "2. Go to your profile settings\n"
+                    f"3. Add your Telegram username: @{telegram_username}\n"
+                    "4. Save your profile\n\n"
+                    f"Your chat ID is: {chat_id}"
+                )
+        else:
+            welcome_text = (
+                "Hello! To connect your Telegram to your portfolio account:\n\n"
+                "1. Set a Telegram username in your Telegram settings\n"
+                "2. Sign up or log in to your portfolio account\n"
+                "3. Add your Telegram username to your profile\n\n"
+                f"Your chat ID is: {chat_id}"
+            )
+
+        # Send response message
+        try:
+            from .api_secure.services import send_telegram_message
+            send_telegram_message(str(chat_id), welcome_text)
+        except Exception as e:
+            logger.exception(f"Failed to send Telegram welcome message: {e}")
+
+    elif text.startswith('/help'):
+        help_text = (
+            "Portfolio Bot Help:\n\n"
+            "/start - Connect your account\n"
+            "/help - Show this help\n\n"
+            "You'll receive notifications here when clients request downloads of your videos."
+        )
+        try:
+            from .api_secure.services import send_telegram_message
+            send_telegram_message(str(chat_id), help_text)
+        except Exception as e:
+            logger.exception(f"Failed to send Telegram help message: {e}")
+
+    return JsonResponse({"ok": True})

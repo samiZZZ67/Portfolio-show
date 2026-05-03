@@ -1117,6 +1117,77 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(download_request.telegram_message_id, "tg-message-123")
         mock_send_telegram.assert_called_once()
 
+    def test_secure_download_request_resolves_owner_chat_id_from_telegram_updates(self):
+        owner = User.objects.create_user(
+            username="LinkedTelegramOwner",
+            password="SecurePass123!",
+            email="linkedtelegramowner@example.com",
+        )
+        owner.editor_profile.telegram = "@linkedtelegramowner"
+        owner.editor_profile.telegram_chat_id = ""
+        owner.editor_profile.save(update_fields=["telegram", "telegram_chat_id"])
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Resolved Telegram Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "resolved-telegram.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="resolved-telegram.mp4",
+            original_format="mp4",
+        )
+        requester = User.objects.create_user(
+            username="ResolvedTelegramRequester",
+            password="SecurePass123!",
+            email="resolvedtelegramrequester@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        with patch(
+            "portfolio.api_secure.services.fetch_telegram_updates",
+            return_value=[
+                {
+                    "update_id": 7001,
+                    "message": {
+                        "chat": {"id": 44332211, "type": "private"},
+                        "from": {"username": "LinkedTelegramOwner"},
+                        "text": "/start",
+                    },
+                }
+            ],
+        ) as mock_fetch_updates, patch(
+            "portfolio.api_secure.services.send_telegram_message",
+            return_value="tg-message-linked",
+        ) as mock_send_telegram:
+            self.client.force_login(requester)
+            response = self.client.post(
+                reverse("portfolio:secure-video-download-request", args=[video.id]),
+                {"request_message": "Please approve this download."},
+            )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload["delivery_confirmed"])
+        self.assertEqual(payload["delivery_status"], "telegram_delivered")
+        owner.editor_profile.refresh_from_db()
+        self.assertEqual(owner.editor_profile.telegram_chat_id, "44332211")
+
+        download_request = VideoDownloadRequest.objects.get(requester=requester, video=video)
+        self.assertEqual(download_request.telegram_chat_id, "44332211")
+        self.assertEqual(download_request.telegram_message_id, "tg-message-linked")
+        mock_fetch_updates.assert_called_once()
+        mock_send_telegram.assert_called_once_with(
+            "44332211",
+            mock_send_telegram.call_args.args[1],
+        )
+
     @patch("portfolio.api_secure.services.send_telegram_message", return_value="tg-message-999")
     def test_second_request_is_blocked_after_successful_delivery(self, mock_send_telegram):
         owner = User.objects.create_user(
@@ -1174,7 +1245,8 @@ class PortfolioApiTests(TestCase):
         )
         self.assertEqual(mock_send_telegram.call_count, 1)
 
-    def test_secure_download_request_missing_owner_chat_id_falls_back_to_admin_notification(self):
+    @patch("portfolio.api_secure.services.fetch_telegram_updates", return_value=[])
+    def test_secure_download_request_missing_owner_chat_id_falls_back_to_admin_notification(self, mock_fetch_updates):
         owner = User.objects.create_user(
             username="FallbackOwner",
             password="SecurePass123!",
@@ -1231,6 +1303,7 @@ class PortfolioApiTests(TestCase):
         ).order_by("-id").first()
         self.assertIsNotNone(admin_notification)
         self.assertEqual(admin_notification.payload.get("reason"), "missing_owner_chat_id")
+        mock_fetch_updates.assert_called_once()
 
     @patch("portfolio.api_secure.services.send_telegram_message", side_effect=RuntimeError("telegram failed"))
     def test_secure_download_request_reports_failed_owner_telegram_delivery(self, mock_send_telegram):

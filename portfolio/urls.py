@@ -60,6 +60,7 @@ urlpatterns = [
         views.video_download_view,
         name="video-download",
     ),
+    path("api/telegram/webhook/<str:secret>/", views.telegram_webhook_view, name="telegram-webhook"),
     path("<str:username>/", views.frontend_shell, name="public-profile"),
     re_path(
         r"^(?P<requested_path>(?!media/|static/).*)$",

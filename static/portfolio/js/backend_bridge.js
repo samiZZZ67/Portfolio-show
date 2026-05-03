@@ -1201,6 +1201,99 @@
     ensureFloatingUploadButton();
   }
 
+  function playableDirectVideoUrl(rawUrl) {
+    try {
+      const parsed = new URL(String(rawUrl || "").trim(), window.location.origin);
+      const pathname = parsed.pathname.toLowerCase();
+      if (/\.(mp4|webm|ogg|ogv|mov|m4v)(?:$)/.test(pathname)) {
+        return parsed.toString();
+      }
+    } catch (error) {
+      void error;
+    }
+    return "";
+  }
+
+  function resolveLinkedVideoPlayback(rawUrl) {
+    const fallback = {
+      kind: "iframe",
+      src: String(rawUrl || "").trim(),
+    };
+    const directMediaUrl = playableDirectVideoUrl(rawUrl);
+    if (directMediaUrl) {
+      return {
+        kind: "video",
+        src: directMediaUrl,
+      };
+    }
+
+    try {
+      const parsed = new URL(String(rawUrl || "").trim(), window.location.origin);
+      const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+      const segments = parsed.pathname.split("/").filter(Boolean);
+
+      if (hostname === "youtu.be") {
+        const videoId = segments[0];
+        if (videoId) {
+          return {
+            kind: "iframe",
+            src: `https://www.youtube.com/embed/${videoId}?autoplay=1`,
+          };
+        }
+      }
+
+      if (hostname.endsWith("youtube.com")) {
+        const videoId =
+          parsed.searchParams.get("v") ||
+          (segments[0] === "shorts" ? segments[1] : "") ||
+          (segments[0] === "embed" ? segments[1] : "") ||
+          (segments[0] === "live" ? segments[1] : "");
+        if (videoId) {
+          return {
+            kind: "iframe",
+            src: `https://www.youtube.com/embed/${videoId}?autoplay=1`,
+          };
+        }
+      }
+
+      if (hostname.endsWith("vimeo.com")) {
+        const videoId = segments.find((segment) => /^\d+$/.test(segment));
+        if (videoId) {
+          return {
+            kind: "iframe",
+            src: `https://player.vimeo.com/video/${videoId}?autoplay=1`,
+          };
+        }
+      }
+
+      if (hostname.endsWith("tiktok.com")) {
+        const videoIndex = segments.indexOf("video");
+        const videoId = videoIndex >= 0 ? segments[videoIndex + 1] : "";
+        if (videoId && /^\d+$/.test(videoId)) {
+          return {
+            kind: "iframe",
+            src: `https://www.tiktok.com/player/v1/${videoId}?autoplay=1`,
+          };
+        }
+      }
+
+      if (hostname.endsWith("instagram.com")) {
+        const mediaType = ["reel", "p", "tv"].includes(segments[0]) ? segments[0] : "";
+        const mediaId = mediaType ? segments[1] : "";
+        if (mediaType && mediaId) {
+          return {
+            kind: "iframe",
+            src: `https://www.instagram.com/${mediaType}/${mediaId}/embed/`,
+          };
+        }
+      }
+
+      return fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
   function openPlayerForVideo(editor, video) {
     if (!editor || !video) {
       return;
@@ -1220,11 +1313,18 @@
         `<video src="${video.playback_url}" controls controlsList="nodownload" disablepictureinpicture autoplay ` +
         'style="width:100%;height:100%;background:#000;" playsinline oncontextmenu="return false;"></video>';
     } else {
-      const embedUrl = window.getEmbedUrl(video.url);
-      document.getElementById("playerContainer").innerHTML =
-        `<iframe src="${embedUrl}" style="width:100%;height:100%;border:none;" ` +
-        'allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" ' +
-        "allowfullscreen></iframe>";
+      const playback = resolveLinkedVideoPlayback(video.url);
+      if (playback.kind === "video") {
+        document.getElementById("playerContainer").innerHTML =
+          `<video src="${playback.src}" controls autoplay ` +
+          'style="width:100%;height:100%;background:#000;" playsinline></video>';
+      } else {
+        document.getElementById("playerContainer").innerHTML =
+          `<iframe src="${playback.src}" style="width:100%;height:100%;border:none;" ` +
+          'allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" ' +
+          'referrerpolicy="strict-origin-when-cross-origin" ' +
+          "allowfullscreen></iframe>";
+      }
     }
 
     renderPlayerActions(editor, video);

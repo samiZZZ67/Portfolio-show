@@ -285,6 +285,90 @@ Your project uses this pattern in the frontend integration with `backend_bridge.
 - Files are stored via Cloudinary
 - Frontend sends files via AJAX with proper CSRF tokens
 
+## Telegram Integration
+
+The platform includes Telegram notifications for download requests. When a client requests to download a video, the video owner receives a notification via Telegram.
+
+### User-Level Configuration
+
+For video owners to receive Telegram notifications:
+
+1. **Telegram Username**: Set during signup or profile update (optional for editors)
+2. **Telegram Chat ID**: Must be configured for notifications to work
+   - This is the unique identifier for the user's Telegram chat with your bot
+   - Obtained when the user starts a conversation with your Telegram bot
+
+### System-Level Configuration
+
+For Telegram integration to work, the following environment variables must be set:
+
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_API_BASE=https://api.telegram.org  # Optional, defaults to this
+TELEGRAM_WEBHOOK_SECRET=your_webhook_secret_here
+```
+
+### Bot Setup
+
+To set up Telegram notifications:
+
+1. Create a Telegram bot via [@BotFather](https://t.me/botfather)
+2. Get the bot token
+3. Set `TELEGRAM_BOT_TOKEN` in your environment
+4. Generate a secure webhook secret and set `TELEGRAM_WEBHOOK_SECRET`
+5. Set the webhook URL: `https://yourdomain.com/api/telegram/webhook/YOUR_SECRET/`
+6. Users need to start a chat with your bot to get their `chat_id`
+
+### Setting Up the Webhook
+
+1. **Generate a webhook secret** (use a random string):
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+2. **Set the webhook URL** with Telegram:
+   ```bash
+   # Using the management command (recommended)
+   python manage.py setup_telegram_webhook --domain yourdomain.com
+   
+   # Or manually with curl
+   curl -X POST "https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook" \
+        -d "url=https://yourdomain.com/api/telegram/webhook/YOUR_SECRET/"
+   ```
+
+3. **Remove webhook** (if needed):
+   ```bash
+   python manage.py setup_telegram_webhook --domain yourdomain.com --remove
+   ```
+
+3. **Test the webhook**:
+   ```bash
+   curl -X POST "https://yourdomain.com/api/telegram/webhook/YOUR_SECRET/" \
+        -H "Content-Type: application/json" \
+        -d '{"message":{"chat":{"id":123456789,"username":"testuser"},"text":"/start"}}'
+   ```
+
+### User Onboarding
+
+Users connect their Telegram by:
+
+1. Setting their Telegram username in their profile
+2. Starting a chat with your bot by sending `/start`
+3. The bot automatically captures their `chat_id` and links it to their account
+4. Users receive a confirmation message with their chat ID
+
+### Commands Supported
+
+- `/start` - Connect account and get chat ID
+- `/help` - Show help information
+
+### Troubleshooting
+
+- **Bot not responding**: Check `TELEGRAM_BOT_TOKEN` is correct
+- **Webhook not working**: Verify webhook URL is accessible and secret matches
+- **Users not getting notifications**: Ensure they have set their Telegram username in profile and chatted with bot
+- **Messages failing**: Check Telegram API limits and bot permissions
+
 ## Installation
 
 ### Prerequisites
@@ -398,14 +482,30 @@ The application is configured for deployment on Render:
 
 ### Environment Variables
 
-- `SECRET_KEY`: Django secret key
-- `DEBUG`: Debug mode (False for production)
-- `ALLOWED_HOSTS`: Comma-separated list of allowed hosts
-- `DATABASE_URL`: Database connection URL
-- `CLOUDINARY_CLOUD_NAME`: Cloudinary cloud name
-- `CLOUDINARY_API_KEY`: Cloudinary API key
-- `CLOUDINARY_API_SECRET`: Cloudinary API secret
-- `TELEGRAM_BOT_TOKEN`: Telegram bot token (if used)
+Create a `.env` file in your project root:
+
+```bash
+# Django settings
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
+
+# Database
+DATABASE_URL=sqlite:///db.sqlite3
+
+# Cloudinary (for file uploads)
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+
+# Telegram Bot (for notifications)
+TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
+TELEGRAM_WEBHOOK_SECRET=your_secure_random_string
+TELEGRAM_API_BASE=https://api.telegram.org
+
+# Email (optional)
+DEFAULT_FROM_EMAIL=noreply@yourdomain.com
+```
 
 ### Database
 

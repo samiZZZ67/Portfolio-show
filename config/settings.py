@@ -6,6 +6,37 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def read_env_text(path):
+    raw = path.read_bytes()
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="ignore")
+
+
+def load_env_file(path):
+    if not path.exists() or not path.is_file():
+        return
+
+    env_text = read_env_text(path).replace("\x00", "")
+    for raw_line in env_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if not key:
+            continue
+        os.environ.setdefault(key, value)
+
+
+for env_candidate in (BASE_DIR / ".env", BASE_DIR / "local.env"):
+    load_env_file(env_candidate)
+
+
 def csv_env(name, default=""):
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
@@ -174,6 +205,7 @@ CLOUDINARY_AUTH_TOKEN_KEY = os.environ.get("CLOUDINARY_AUTH_TOKEN_KEY", "").stri
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@portfolio-show.local")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_API_BASE = os.environ.get("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "").strip()
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
