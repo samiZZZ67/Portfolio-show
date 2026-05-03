@@ -22,6 +22,17 @@ A role-based video portfolio platform built with Django, allowing video editors 
 - **Deployment**: Render
 - **Frontend**: HTML, CSS, JavaScript (existing index.html)
 
+## Project Statistics
+
+- **Main project source** (excluding Django migrations): `11,506` lines across `32` files
+- **Full repo source** (including migrations): `12,223` lines across `44` files
+
+**Main source breakdown:**
+- Python: `6,423` lines
+- JavaScript: `2,492` lines
+- HTML/templates: `2,447` lines
+- CSS: `144` lines
+
 ## Image Upload Component
 
 Here's a professional image upload button with a toggle bar for different processing options:

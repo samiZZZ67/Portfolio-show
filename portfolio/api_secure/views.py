@@ -307,6 +307,17 @@ class VideoDownloadRequestAPIView(APIView):
         if not video.has_uploaded_file and not cloudinary_public_id_for_video(video):
             raise ValidationError({"detail": "This video is not available for secure download."})
 
+        existing_request = VideoDownloadRequest.objects.filter(
+            requester=request.user,
+            video=video,
+        ).first()
+        if (
+            existing_request
+            and existing_request.status == DownloadRequestStatus.PENDING
+            and existing_request.telegram_message_id
+        ):
+            raise ValidationError({"detail": "Your request is already pending review."})
+
         serializer = DownloadRequestCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -326,17 +337,23 @@ class VideoDownloadRequestAPIView(APIView):
                 "reviewed_by": None,
             },
         )
-        notify_owner_about_download_request(download_request, request)
+        delivery_result = notify_owner_about_download_request(download_request, request)
         record_access_event(
             VideoAccessEventType.DOWNLOAD_REQUESTED,
             video=video,
             request=request,
             user=request.user,
             download_request=download_request,
-            metadata={"status": download_request.status},
+            metadata={
+                "status": download_request.status,
+                "delivery_status": (delivery_result or {}).get("delivery_status", ""),
+                "delivery_confirmed": bool((delivery_result or {}).get("delivery_confirmed")),
+            },
         )
+        response_payload = VideoDownloadRequestSerializer(download_request).data
+        response_payload.update(delivery_result or {})
         return Response(
-            VideoDownloadRequestSerializer(download_request).data,
+            response_payload,
             status=status.HTTP_201_CREATED,
         )
 

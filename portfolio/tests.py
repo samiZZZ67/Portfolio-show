@@ -454,6 +454,8 @@ class PortfolioApiTests(TestCase):
             requester=requester,
             video=video,
             status=DownloadRequestStatus.PENDING,
+            telegram_chat_id="99887766",
+            telegram_message_id="delivered-message-1",
         )
 
         self.client.force_login(requester)
@@ -468,6 +470,47 @@ class PortfolioApiTests(TestCase):
             f"/api/secure/videos/{video.id}/download-request/",
             video_payload["request_access_url"],
         )
+
+    def test_bootstrap_marks_failed_delivery_request_as_retryable(self):
+        owner = User.objects.create_user(
+            username="VideoOwnerRetry",
+            password="SecurePass123!",
+            email="ownerretry@example.com",
+        )
+        requester = User.objects.create_user(
+            username="VideoRequesterRetry",
+            password="SecurePass123!",
+            email="requesterretry@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Retry Uploaded Cut",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "retry-access.mp4",
+                b"video-bytes",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+        )
+        VideoDownloadRequest.objects.create(
+            requester=requester,
+            video=video,
+            status=DownloadRequestStatus.PENDING,
+            telegram_chat_id="99887766",
+            telegram_message_id="",
+        )
+
+        self.client.force_login(requester)
+        payload = self.client.get(reverse("portfolio:bootstrap")).json()
+
+        owner_payload = next(
+            editor for editor in payload["editors"] if editor["username"] == owner.username
+        )
+        video_payload = next(item for item in owner_payload["videos"] if item["id"] == str(video.id))
+        self.assertEqual(video_payload["download_access_state"], "delivery_failed")
 
     def test_bootstrap_marks_approved_download_access_for_granted_user(self):
         owner = User.objects.create_user(
@@ -1024,6 +1067,113 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(file_response.status_code, 200)
         self.assertIn("attachment;", file_response["Content-Disposition"])
 
+    @patch("portfolio.api_secure.services.send_telegram_message", return_value="tg-message-123")
+    def test_secure_download_request_response_confirms_owner_telegram_delivery(self, mock_send_telegram):
+        owner = User.objects.create_user(
+            username="TelegramOwner",
+            password="SecurePass123!",
+            email="telegramowner@example.com",
+        )
+        owner.editor_profile.telegram = "@telegramowner"
+        owner.editor_profile.telegram_chat_id = "99887766"
+        owner.editor_profile.save(update_fields=["telegram", "telegram_chat_id"])
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Telegram Delivered Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "telegram-delivered.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="telegram-delivered.mp4",
+            original_format="mp4",
+        )
+        requester = User.objects.create_user(
+            username="TelegramRequester",
+            password="SecurePass123!",
+            email="telegramrequester@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        self.client.force_login(requester)
+        response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Please approve this download."},
+        )
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload["delivery_confirmed"])
+        self.assertEqual(payload["delivery_status"], "telegram_delivered")
+        self.assertIn("successfully delivered", payload["delivery_message"].lower())
+
+        download_request = VideoDownloadRequest.objects.get(requester=requester, video=video)
+        self.assertEqual(download_request.telegram_chat_id, "99887766")
+        self.assertEqual(download_request.telegram_message_id, "tg-message-123")
+        mock_send_telegram.assert_called_once()
+
+    @patch("portfolio.api_secure.services.send_telegram_message", return_value="tg-message-999")
+    def test_second_request_is_blocked_after_successful_delivery(self, mock_send_telegram):
+        owner = User.objects.create_user(
+            username="DeliveredOwner",
+            password="SecurePass123!",
+            email="deliveredowner@example.com",
+        )
+        owner.editor_profile.telegram = "@deliveredowner"
+        owner.editor_profile.telegram_chat_id = "66554433"
+        owner.editor_profile.save(update_fields=["telegram", "telegram_chat_id"])
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Already Delivered Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "already-delivered.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="already-delivered.mp4",
+            original_format="mp4",
+        )
+        requester = User.objects.create_user(
+            username="DeliveredRequester",
+            password="SecurePass123!",
+            email="deliveredrequester@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        self.client.force_login(requester)
+        first_response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Please approve this download."},
+        )
+        self.assertEqual(first_response.status_code, 201)
+
+        second_response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Please approve this download again."},
+        )
+        self.assertEqual(second_response.status_code, 400)
+        self.assertContains(
+            second_response,
+            "Your request is already pending review.",
+            status_code=400,
+        )
+        self.assertEqual(
+            VideoDownloadRequest.objects.filter(requester=requester, video=video).count(),
+            1,
+        )
+        self.assertEqual(mock_send_telegram.call_count, 1)
+
     def test_secure_download_request_missing_owner_chat_id_falls_back_to_admin_notification(self):
         owner = User.objects.create_user(
             username="FallbackOwner",
@@ -1070,6 +1220,9 @@ class PortfolioApiTests(TestCase):
             {"request_message": "Please approve this download."},
         )
         self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertFalse(payload["delivery_confirmed"])
+        self.assertEqual(payload["delivery_status"], "admin_fallback_missing_owner_chat_id")
 
         admin_notification = OwnerNotification.objects.filter(
             owner=admin_user,
@@ -1078,6 +1231,80 @@ class PortfolioApiTests(TestCase):
         ).order_by("-id").first()
         self.assertIsNotNone(admin_notification)
         self.assertEqual(admin_notification.payload.get("reason"), "missing_owner_chat_id")
+
+    @patch("portfolio.api_secure.services.send_telegram_message", side_effect=RuntimeError("telegram failed"))
+    def test_secure_download_request_reports_failed_owner_telegram_delivery(self, mock_send_telegram):
+        owner = User.objects.create_user(
+            username="BrokenTelegramOwner",
+            password="SecurePass123!",
+            email="brokentelegramowner@example.com",
+        )
+        owner.editor_profile.telegram = "@brokentelegramowner"
+        owner.editor_profile.telegram_chat_id = "55443322"
+        owner.editor_profile.save(update_fields=["telegram", "telegram_chat_id"])
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Broken Telegram Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "broken-telegram.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="broken-telegram.mp4",
+            original_format="mp4",
+        )
+        admin_user = User.objects.create_superuser(
+            username="BrokenTelegramAdmin",
+            password="SecurePass123!",
+            email="brokentelegramadmin@example.com",
+        )
+        admin_user.editor_profile.role = AccountRole.ADMIN
+        admin_user.editor_profile.save(update_fields=["role"])
+        requester = User.objects.create_user(
+            username="BrokenTelegramRequester",
+            password="SecurePass123!",
+            email="brokentelegramrequester@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        self.client.force_login(requester)
+        response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Please approve this download."},
+        )
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertFalse(payload["delivery_confirmed"])
+        self.assertEqual(payload["delivery_status"], "admin_fallback_delivery_failed")
+
+        admin_notification = OwnerNotification.objects.filter(
+            owner=admin_user,
+            video=video,
+            download_request__requester=requester,
+        ).order_by("-id").first()
+        self.assertIsNotNone(admin_notification)
+        self.assertEqual(admin_notification.payload.get("reason"), "owner_telegram_delivery_failed")
+        mock_send_telegram.assert_called_once()
+
+        retry_response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Trying again after failed delivery."},
+        )
+        self.assertEqual(retry_response.status_code, 201)
+        retry_payload = retry_response.json()
+        self.assertFalse(retry_payload["delivery_confirmed"])
+        self.assertEqual(retry_payload["delivery_status"], "admin_fallback_delivery_failed")
+        self.assertEqual(
+            VideoDownloadRequest.objects.filter(requester=requester, video=video).count(),
+            1,
+        )
+        self.assertEqual(mock_send_telegram.call_count, 2)
 
     def test_requester_receives_email_when_download_request_is_rejected(self):
         owner = User.objects.create_user(

@@ -363,7 +363,12 @@ def send_telegram_message(chat_id, text):
     )
     response = urlopen(request_obj, timeout=10)
     response_payload = json.loads(response.read().decode("utf-8") or "{}")
-    return str(response_payload.get("result", {}).get("message_id", "") or "")
+    if not response_payload.get("ok"):
+        raise RuntimeError("Telegram API did not confirm delivery.")
+    message_id = str(response_payload.get("result", {}).get("message_id", "") or "")
+    if not message_id:
+        raise RuntimeError("Telegram delivery response did not include a message ID.")
+    return message_id
 
 
 def notify_admins_about_download_request_issue(download_request, *, reason):
@@ -476,17 +481,41 @@ def notify_owner_about_download_request(download_request, request):
             download_request.telegram_chat_id = download_request.video.profile.telegram_chat_id
             download_request.telegram_message_id = message_id
             download_request.save(update_fields=["telegram_chat_id", "telegram_message_id"])
+            return {
+                "delivery_confirmed": True,
+                "delivery_status": "telegram_delivered",
+                "delivery_message": "Request successfully delivered to the video owner's Telegram.",
+                "telegram_message_id": message_id,
+            }
         except Exception:
             logger.exception("Failed to send owner download request Telegram message.")
             notify_admins_about_download_request_issue(
                 download_request,
                 reason="owner_telegram_delivery_failed",
             )
+            return {
+                "delivery_confirmed": False,
+                "delivery_status": "admin_fallback_delivery_failed",
+                "delivery_message": (
+                    "Request saved, but Telegram delivery to the video owner could not be confirmed. "
+                    "Admin follow-up was notified."
+                ),
+                "telegram_message_id": "",
+            }
     else:
         notify_admins_about_download_request_issue(
             download_request,
             reason="missing_owner_chat_id",
         )
+        return {
+            "delivery_confirmed": False,
+            "delivery_status": "admin_fallback_missing_owner_chat_id",
+            "delivery_message": (
+                "Request saved, but the video owner does not have a Telegram chat ID yet. "
+                "Admin follow-up was notified."
+            ),
+            "telegram_message_id": "",
+        }
 
 
 def notify_requester_about_download_decision(download_request):

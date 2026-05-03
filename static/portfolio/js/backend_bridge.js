@@ -677,6 +677,29 @@
     return "none";
   }
 
+  function videoRequestProgressStore() {
+    if (!window.__elaVideoRequestProgress) {
+      window.__elaVideoRequestProgress = {};
+    }
+    return window.__elaVideoRequestProgress;
+  }
+
+  function setVideoRequestInProgress(videoId, isLoading) {
+    if (!videoId) {
+      return;
+    }
+    const store = videoRequestProgressStore();
+    if (isLoading) {
+      store[videoId] = true;
+    } else {
+      delete store[videoId];
+    }
+  }
+
+  function isVideoRequestInProgress(videoId) {
+    return Boolean(videoId && videoRequestProgressStore()[videoId]);
+  }
+
   function syncVideoDownloadAccessState(ownerUsername, videoId, state) {
     const editor = editorByUsername(ownerUsername);
     const video = editor ? (editor.videos || []).find((item) => item.id === videoId) : null;
@@ -727,14 +750,38 @@
       return;
     }
 
-    const payload = await postJson(
-      video.request_access_url || `/api/secure/videos/${encodeURIComponent(video.id)}/download-request/`,
-      { request_message: "" }
-    );
-    syncVideoDownloadAccessState(ownerUsername, videoId, payload.status || "pending");
+    if (isVideoRequestInProgress(video.id)) {
+      return;
+    }
+
+    setVideoRequestInProgress(video.id, true);
     renderCurrentContexts();
     refreshActivePlayerState();
-    window.showToast("Access request sent to the video owner.", "success");
+
+    try {
+      const payload = await postJson(
+        video.request_access_url || `/api/secure/videos/${encodeURIComponent(video.id)}/download-request/`,
+        { request_message: "" }
+      );
+      syncVideoDownloadAccessState(
+        ownerUsername,
+        videoId,
+        payload.delivery_confirmed ? (payload.status || "pending") : "delivery_failed"
+      );
+      renderCurrentContexts();
+      refreshActivePlayerState();
+      window.showToast(
+        payload.delivery_message ||
+          (payload.delivery_confirmed
+            ? "Request successfully delivered to the video owner's Telegram."
+            : "Access request saved."),
+        payload.delivery_confirmed ? "success" : "info"
+      );
+    } finally {
+      setVideoRequestInProgress(video.id, false);
+      renderCurrentContexts();
+      refreshActivePlayerState();
+    }
   }
 
   function createVideoAccessAction(ownerUsername, video, compact = false) {
@@ -756,6 +803,15 @@
     button.style.border = "1px solid rgba(255,255,255,0.18)";
     button.style.backdropFilter = "blur(12px)";
     button.style.boxShadow = "0 10px 24px rgba(15, 23, 42, 0.18)";
+
+    if (isVideoRequestInProgress(video.id)) {
+      button.disabled = true;
+      button.style.cursor = "wait";
+      button.style.background = "rgba(15,23,42,0.82)";
+      button.style.color = "#e2e8f0";
+      button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+      return button;
+    }
 
     if (state === "owner" || state === "approved") {
       button.className = compact ? "btn-secondary btn-sm" : "btn-secondary btn-sm";
@@ -779,7 +835,7 @@
       button.style.cursor = "default";
       button.style.background = "rgba(15,23,42,0.82)";
       button.style.color = "#e2e8f0";
-      button.innerHTML = '<i class="fas fa-clock"></i> Requested';
+      button.innerHTML = '<i class="fas fa-clock"></i> Pending Review';
       return button;
     }
 
@@ -788,7 +844,7 @@
     button.style.color = "#111827";
     button.style.borderColor = "rgba(255,140,66,0.95)";
     button.innerHTML =
-      state === "rejected"
+      state === "rejected" || state === "delivery_failed"
         ? '<i class="fas fa-redo-alt"></i> Request Again'
         : '<i class="fas fa-lock-open"></i> Request Access';
     button.addEventListener("click", async function (event) {

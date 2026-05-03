@@ -308,7 +308,9 @@ def download_access_state(video, current_profile=None):
         if download_request.status == DownloadRequestStatus.APPROVED:
             return "approved"
         if download_request.status == DownloadRequestStatus.PENDING:
-            return "pending"
+            if download_request.telegram_message_id:
+                return "pending"
+            return "delivery_failed"
         if download_request.status == DownloadRequestStatus.REJECTED:
             return "rejected"
 
