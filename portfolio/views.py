@@ -25,10 +25,13 @@ from django.views.decorators.http import require_GET, require_POST
 from .forms import ContactForm, LoginForm, ProfileForm, SignUpForm, VideoForm, VideoMoveForm
 from .models import (
     AccountRole,
+    DownloadRequestStatus,
     EditorSkill,
     EditorProfile,
     FollowRelationship,
     PortfolioVideo,
+    VideoDownloadGrant,
+    VideoDownloadRequest,
     VideoReaction,
     VideoReactionType,
     VideoStarRating,
@@ -120,6 +123,17 @@ def profile_queryset():
             Prefetch(
                 "videos__ratings",
                 queryset=VideoStarRating.objects.select_related("profile__user").order_by("created_at"),
+            ),
+            Prefetch(
+                "videos__download_requests",
+                queryset=VideoDownloadRequest.objects.select_related("requester").order_by("-requested_at"),
+            ),
+            Prefetch(
+                "videos__download_grants",
+                queryset=VideoDownloadGrant.objects.select_related("user").filter(
+                    is_active=True,
+                    revoked_at__isnull=True,
+                ),
             ),
             Prefetch(
                 "skills",
@@ -274,12 +288,40 @@ def rating_summary(video, current_profile=None):
     return average_rating, ratings_count, viewer_rating
 
 
+def download_access_state(video, current_profile=None):
+    if not video.has_uploaded_file:
+        return "hidden"
+
+    if current_profile and current_profile.user_id == video.profile.user_id:
+        return "owner"
+
+    if not current_profile:
+        return "none"
+
+    for grant in video.download_grants.all():
+        if grant.user_id == current_profile.user_id and grant.is_active and grant.revoked_at is None:
+            return "approved"
+
+    for download_request in video.download_requests.all():
+        if download_request.requester_id != current_profile.user_id:
+            continue
+        if download_request.status == DownloadRequestStatus.APPROVED:
+            return "approved"
+        if download_request.status == DownloadRequestStatus.PENDING:
+            return "pending"
+        if download_request.status == DownloadRequestStatus.REJECTED:
+            return "rejected"
+
+    return "none"
+
+
 def serialize_video(video, current_profile=None):
     likes_count, viewer_has_liked = like_summary(video, current_profile=current_profile)
     average_rating, ratings_count, viewer_rating = rating_summary(
         video,
         current_profile=current_profile,
     )
+    access_state = download_access_state(video, current_profile=current_profile)
     can_download = bool(
         current_profile and current_profile.user_id == video.profile.user_id and video.has_uploaded_file
     )
@@ -311,6 +353,19 @@ def serialize_video(video, current_profile=None):
         if can_download
         else "",
         "can_download": can_download,
+        "download_access_state": access_state,
+        "request_access_url": reverse(
+            "portfolio:secure-video-download-request",
+            kwargs={"video_id": video.id},
+        )
+        if video.has_uploaded_file
+        else "",
+        "secure_download_url": reverse(
+            "portfolio:secure-video-download",
+            kwargs={"video_id": video.id},
+        )
+        if video.has_uploaded_file
+        else "",
         "thumb": video.thumbnail_url,
         "type": video.content_type,
         "category": video.category,

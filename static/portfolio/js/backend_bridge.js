@@ -99,6 +99,54 @@
     return cookie ? decodeURIComponent(cookie.split("=")[1]) : "";
   }
 
+  function extractErrorMessage(payload, fallback = "Request failed.") {
+    if (!payload) {
+      return fallback;
+    }
+    if (typeof payload === "string") {
+      return payload.trim() || fallback;
+    }
+    if (typeof payload.message === "string" && payload.message.trim()) {
+      return payload.message.trim();
+    }
+    if (typeof payload.detail === "string" && payload.detail.trim()) {
+      return payload.detail.trim();
+    }
+
+    const candidates = [
+      payload.detail,
+      payload.errors,
+      payload.non_field_errors,
+      ...Object.values(payload),
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate.trim();
+      }
+      if (Array.isArray(candidate) && candidate.length) {
+        const first = candidate[0];
+        if (typeof first === "string" && first.trim()) {
+          return first.trim();
+        }
+        if (first && typeof first === "object") {
+          const nested = extractErrorMessage(first, "");
+          if (nested) {
+            return nested;
+          }
+        }
+      }
+      if (candidate && typeof candidate === "object") {
+        const nested = extractErrorMessage(candidate, "");
+        if (nested) {
+          return nested;
+        }
+      }
+    }
+
+    return fallback;
+  }
+
   async function postForm(url, data) {
     const response = await fetch(url, {
       method: "POST",
@@ -122,7 +170,35 @@
         });
         window.openModal("loginModal");
       }
-      throw new Error(payload.message || "Request failed.");
+      throw new Error(extractErrorMessage(payload));
+    }
+    return payload;
+  }
+
+  async function postJson(url, data) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCsrfToken(),
+        Accept: "application/json",
+      },
+      body: JSON.stringify(data || {}),
+      credentials: "same-origin",
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      if (response.status === 401) {
+        replaceState({
+          editors: window.__elaEditors || [],
+          current_user: null,
+          current_user_role: null,
+          current_user_can_access_admin: false,
+        });
+        window.openModal("loginModal");
+      }
+      throw new Error(extractErrorMessage(payload));
     }
     return payload;
   }
@@ -169,7 +245,7 @@
         });
         window.openModal("loginModal");
       }
-      throw new Error(payload.message || "Request failed.");
+      throw new Error(extractErrorMessage(payload));
     }
     return payload;
   }
@@ -193,7 +269,7 @@
         });
         window.openModal("loginModal");
       }
-      throw new Error(payload.message || "Request failed.");
+      throw new Error(extractErrorMessage(payload));
     }
     return payload;
   }
@@ -588,6 +664,145 @@
     host.appendChild(ratingHost);
   }
 
+  function videoDownloadAccessState(video, ownerUsername = "") {
+    if (!video?.has_uploaded_file) {
+      return "hidden";
+    }
+    if (video.download_access_state) {
+      return video.download_access_state;
+    }
+    if (window.currentUser && ownerUsername && window.currentUser === ownerUsername) {
+      return "owner";
+    }
+    return "none";
+  }
+
+  function syncVideoDownloadAccessState(ownerUsername, videoId, state) {
+    const editor = editorByUsername(ownerUsername);
+    const video = editor ? (editor.videos || []).find((item) => item.id === videoId) : null;
+    if (!video) {
+      return null;
+    }
+    video.download_access_state = state;
+    return video;
+  }
+
+  async function beginSecureVideoDownload(video) {
+    if (!video) {
+      return;
+    }
+
+    if (video.download_url && videoDownloadAccessState(video) === "owner") {
+      window.location.assign(video.download_url);
+      return;
+    }
+
+    const payload = await getJson(
+      video.secure_download_url || `/api/secure/videos/${encodeURIComponent(video.id)}/download/`
+    );
+    if (!payload.download_url) {
+      throw new Error("Download link is not available right now.");
+    }
+    window.location.assign(payload.download_url);
+  }
+
+  async function requestVideoDownloadAccess(ownerUsername, videoId) {
+    const editor = editorByUsername(ownerUsername);
+    const video = editor ? (editor.videos || []).find((item) => item.id === videoId) : null;
+    if (!video || !video.has_uploaded_file) {
+      return;
+    }
+
+    const currentState = videoDownloadAccessState(video, ownerUsername);
+    if (currentState === "owner" || (window.currentUser && window.currentUser === ownerUsername)) {
+      await beginSecureVideoDownload(video);
+      return;
+    }
+    if (currentState === "approved") {
+      await beginSecureVideoDownload(video);
+      return;
+    }
+    if (!window.currentUser) {
+      promptSignIn("Sign in to request download access.");
+      return;
+    }
+
+    const payload = await postJson(
+      video.request_access_url || `/api/secure/videos/${encodeURIComponent(video.id)}/download-request/`,
+      { request_message: "" }
+    );
+    syncVideoDownloadAccessState(ownerUsername, videoId, payload.status || "pending");
+    renderCurrentContexts();
+    refreshActivePlayerState();
+    window.showToast("Access request sent to the video owner.", "success");
+  }
+
+  function createVideoAccessAction(ownerUsername, video, compact = false) {
+    const state = videoDownloadAccessState(video, ownerUsername);
+    if (state === "hidden") {
+      return null;
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.style.display = "inline-flex";
+    button.style.alignItems = "center";
+    button.style.gap = compact ? "4px" : "6px";
+    button.style.borderRadius = "999px";
+    button.style.fontSize = compact ? "0.68rem" : "0.78rem";
+    button.style.fontWeight = "700";
+    button.style.lineHeight = "1";
+    button.style.padding = compact ? "6px 8px" : "8px 12px";
+    button.style.border = "1px solid rgba(255,255,255,0.18)";
+    button.style.backdropFilter = "blur(12px)";
+    button.style.boxShadow = "0 10px 24px rgba(15, 23, 42, 0.18)";
+
+    if (state === "owner" || state === "approved") {
+      button.className = compact ? "btn-secondary btn-sm" : "btn-secondary btn-sm";
+      button.style.background = "rgba(15,23,42,0.82)";
+      button.style.color = "#fff";
+      button.innerHTML = '<i class="fas fa-download"></i> Download';
+      button.addEventListener("click", async function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+          await beginSecureVideoDownload(video);
+        } catch (error) {
+          window.showToast(error.message || "Unable to start the download.", "error");
+        }
+      });
+      return button;
+    }
+
+    if (state === "pending") {
+      button.disabled = true;
+      button.style.cursor = "default";
+      button.style.background = "rgba(15,23,42,0.82)";
+      button.style.color = "#e2e8f0";
+      button.innerHTML = '<i class="fas fa-clock"></i> Requested';
+      return button;
+    }
+
+    button.className = compact ? "btn-primary btn-sm" : "btn-primary btn-sm";
+    button.style.background = "rgba(255,140,66,0.94)";
+    button.style.color = "#111827";
+    button.style.borderColor = "rgba(255,140,66,0.95)";
+    button.innerHTML =
+      state === "rejected"
+        ? '<i class="fas fa-redo-alt"></i> Request Again'
+        : '<i class="fas fa-lock-open"></i> Request Access';
+    button.addEventListener("click", async function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        await requestVideoDownloadAccess(ownerUsername, video.id);
+      } catch (error) {
+        window.showToast(error.message || "Unable to request access.", "error");
+      }
+    });
+    return button;
+  }
+
   function renderPlayerActions(editor, video) {
     const host = document.getElementById("playerActions");
     if (!host) {
@@ -608,15 +823,9 @@
     host.appendChild(engagementHost);
 
     if (video.has_uploaded_file) {
-      if (video.can_download && video.download_url) {
-        const downloadButton = document.createElement("button");
-        downloadButton.type = "button";
-        downloadButton.className = "btn-secondary btn-sm";
-        downloadButton.innerHTML = '<i class="fas fa-download"></i> Download';
-        downloadButton.addEventListener("click", function () {
-          window.location.assign(video.download_url);
-        });
-        host.appendChild(downloadButton);
+      const accessAction = createVideoAccessAction(editor.username, video, false);
+      if (accessAction) {
+        host.appendChild(accessAction);
       } else {
         const note = document.createElement("div");
         note.style.color = "var(--text-secondary)";
@@ -694,6 +903,7 @@
     cards.forEach((card, index) => {
       const video = videos[index];
       const info = card.querySelector(".info");
+      const media = card.firstElementChild;
       if (!video || !info) {
         return;
       }
@@ -719,6 +929,21 @@
       renderVideoEngagement(engagementHost, editor.username, video, true, false);
       block.appendChild(engagementHost);
       info.appendChild(block);
+
+      if (media) {
+        media.querySelector(".ela-video-access-badge")?.remove();
+        const accessAction = createVideoAccessAction(editor.username, video, true);
+        if (accessAction && videoDownloadAccessState(video, editor.username) !== "owner") {
+          const badge = document.createElement("div");
+          badge.className = "ela-video-access-badge";
+          badge.style.position = "absolute";
+          badge.style.top = "8px";
+          badge.style.left = "8px";
+          badge.style.zIndex = "3";
+          badge.appendChild(accessAction);
+          media.appendChild(badge);
+        }
+      }
     });
   }
 
@@ -998,6 +1223,40 @@
       : `<i class="fas fa-save"></i> <span id="videoSaveBtn">${isEditing ? "Update Video" : "Save Video"}</span>`;
   }
 
+  function signupFeedbackElement() {
+    return document.getElementById("signupSubmitFeedback");
+  }
+
+  function setSignupFeedback(message, tone = "muted") {
+    const feedback = signupFeedbackElement();
+    if (!feedback) {
+      return;
+    }
+
+    feedback.textContent = message || "";
+    feedback.style.display = message ? "block" : "none";
+    feedback.style.color =
+      tone === "error" ? "var(--accent)" : tone === "success" ? "#16a34a" : "var(--text-muted)";
+  }
+
+  function setSignupButtonLoading(isLoading) {
+    const button = document.getElementById("signupSubmitAction");
+    if (!button) {
+      return;
+    }
+
+    const isEditorSignup = (document.getElementById("signupRole")?.value || "editor") === "editor";
+    const idleLabel = isEditorSignup ? "Create Portfolio" : "Create Account";
+    const loadingLabel = isEditorSignup ? "Creating Portfolio..." : "Creating Account...";
+
+    button.disabled = isLoading;
+    button.style.opacity = isLoading ? "0.7" : "";
+    button.style.cursor = isLoading ? "wait" : "";
+    button.innerHTML = isLoading
+      ? `<i class="fas fa-spinner fa-spin"></i> <span id="signupSubmitBtn">${loadingLabel}</span>`
+      : `<i class="fas fa-user-plus"></i> <span id="signupSubmitBtn">${idleLabel}</span>`;
+  }
+
   function updateVideoSourceUi(mode) {
     const urlGroup = videoUrlGroup();
     const uploadBlock = document.getElementById("videoUploadBlock");
@@ -1135,6 +1394,19 @@
         `<p style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Upload a local profile image for your account.</p>`;
       bioGroup.parentNode.insertBefore(avatarBlock, bioGroup);
     }
+
+    const signupRole = document.getElementById("signupRole");
+    if (signupRole && !signupRole.dataset.elaBound) {
+      signupRole.dataset.elaBound = "true";
+      signupRole.addEventListener("change", function () {
+        const button = document.getElementById("signupSubmitAction");
+        if (button && !button.disabled) {
+          setSignupButtonLoading(false);
+        }
+      });
+    }
+
+    setSignupButtonLoading(false);
   }
 
   function ensureDashboardEnhancements() {
@@ -1445,17 +1717,32 @@
   };
 
   window.handleSignup = async function () {
+    const selectedRole = document.getElementById("signupRole")?.value || "editor";
+    const avatarFileInput = document.getElementById("signupAvatarFile");
+    const hasAvatarFile = Boolean(avatarFileInput && avatarFileInput.files && avatarFileInput.files[0]);
+
+    setSignupButtonLoading(true);
+    setSignupFeedback(
+      hasAvatarFile
+        ? selectedRole === "editor"
+          ? "Uploading your profile image and creating your portfolio..."
+          : "Uploading your profile image and creating your account..."
+        : selectedRole === "editor"
+          ? "Creating your portfolio..."
+          : "Creating your account...",
+      "muted"
+    );
+
     try {
       const formData = new FormData();
-      formData.append("role", document.getElementById("signupRole")?.value || "editor");
+      formData.append("role", selectedRole);
       formData.append("cname", document.getElementById("signupCname")?.value.trim() || "");
       formData.append("username", document.getElementById("signupUsername").value.trim());
       formData.append("password", document.getElementById("signupPassword").value);
       formData.append("email", document.getElementById("signupEmail").value.trim());
       formData.append("bio", document.getElementById("signupBio").value.trim());
-      const avatarFile = document.getElementById("signupAvatarFile");
-      if (avatarFile && avatarFile.files && avatarFile.files[0]) {
-        formData.append("avatar_file", avatarFile.files[0]);
+      if (hasAvatarFile) {
+        formData.append("avatar_file", avatarFileInput.files[0]);
       }
 
       const payload = await postMultipartForm("/auth/signup/", formData);
@@ -1474,11 +1761,18 @@
       if (document.getElementById("signupAvatarFile")) {
         document.getElementById("signupAvatarFile").value = "";
       }
+      setSignupFeedback("", "muted");
       window.closeModal("signupModal");
       window.showToast(payload.message, "success");
       window.navigate("profile", window.currentUser);
     } catch (error) {
+      setSignupFeedback(error.message, "error");
       window.showToast(error.message, "error");
+    } finally {
+      setSignupButtonLoading(false);
+      if (!document.getElementById("signupModal")?.classList.contains("show")) {
+        setSignupFeedback("", "muted");
+      }
     }
   };
 
@@ -2123,6 +2417,10 @@
 
   document.getElementById("videoPlayerModal")?.addEventListener("ela:before-close", function () {
     teardownPlayerModal();
+  });
+
+  document.getElementById("signupModal")?.addEventListener("ela:before-close", function () {
+    setSignupFeedback("", "muted");
   });
 
   replaceState(bootstrap);

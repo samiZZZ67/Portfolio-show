@@ -376,6 +376,98 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(own_editor["videos"][0]["title"], "My First Reel")
         self.assertEqual(own_editor["role"], AccountRole.EDITOR)
 
+    def test_bootstrap_marks_pending_download_request_for_non_owner(self):
+        owner = User.objects.create_user(
+            username="VideoOwnerPending",
+            password="SecurePass123!",
+            email="ownerpending@example.com",
+        )
+        requester = User.objects.create_user(
+            username="VideoRequesterPending",
+            password="SecurePass123!",
+            email="requesterpending@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Private Uploaded Cut",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "pending-access.mp4",
+                b"video-bytes",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+        )
+        VideoDownloadRequest.objects.create(
+            requester=requester,
+            video=video,
+            status=DownloadRequestStatus.PENDING,
+        )
+
+        self.client.force_login(requester)
+        payload = self.client.get(reverse("portfolio:bootstrap")).json()
+
+        owner_payload = next(
+            editor for editor in payload["editors"] if editor["username"] == owner.username
+        )
+        video_payload = next(item for item in owner_payload["videos"] if item["id"] == str(video.id))
+        self.assertEqual(video_payload["download_access_state"], DownloadRequestStatus.PENDING)
+        self.assertIn(
+            f"/api/secure/videos/{video.id}/download-request/",
+            video_payload["request_access_url"],
+        )
+
+    def test_bootstrap_marks_approved_download_access_for_granted_user(self):
+        owner = User.objects.create_user(
+            username="VideoOwnerApproved",
+            password="SecurePass123!",
+            email="ownerapproved@example.com",
+        )
+        requester = User.objects.create_user(
+            username="VideoRequesterApproved",
+            password="SecurePass123!",
+            email="requesterapproved@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Approved Download Cut",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "approved-access.mp4",
+                b"video-bytes",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.LONG,
+            category=VideoCategory.DOCUMENTARY,
+            duration="4:12",
+        )
+        download_request = VideoDownloadRequest.objects.create(
+            requester=requester,
+            video=video,
+            status=DownloadRequestStatus.APPROVED,
+        )
+        VideoDownloadGrant.objects.create(
+            user=requester,
+            video=video,
+            source_request=download_request,
+            is_active=True,
+        )
+
+        self.client.force_login(requester)
+        payload = self.client.get(reverse("portfolio:bootstrap")).json()
+
+        owner_payload = next(
+            editor for editor in payload["editors"] if editor["username"] == owner.username
+        )
+        video_payload = next(item for item in owner_payload["videos"] if item["id"] == str(video.id))
+        self.assertEqual(video_payload["download_access_state"], DownloadRequestStatus.APPROVED)
+        self.assertIn(
+            f"/api/secure/videos/{video.id}/download/",
+            video_payload["secure_download_url"],
+        )
+
     def test_profile_update_supports_username_cname_and_avatar_upload(self):
         user = User.objects.create_user(
             username="EditorRename",
