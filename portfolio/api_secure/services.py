@@ -10,15 +10,17 @@ import cloudinary.uploader
 from cloudinary.exceptions import Error as CloudinaryError
 from cloudinary.utils import cloudinary_url
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.core import signing
 from django.core.files.storage import FileSystemStorage
 from django.core.mail import send_mail
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Q
 from django.http import FileResponse
 from django.urls import reverse
 from django.utils import timezone
 
 from portfolio.models import (
+    AccountRole,
     DownloadRequestStatus,
     VideoDownloadGrant,
     OwnerNotification,
@@ -340,12 +342,98 @@ def create_owner_notification(*, owner, notification_type, video, title, message
     )
 
 
+def send_telegram_message(chat_id, text):
+    if not chat_id:
+        raise ValueError("Telegram chat ID is required.")
+    if not settings.TELEGRAM_BOT_TOKEN:
+        raise RuntimeError("Telegram bot token is not configured.")
+
+    telegram_url = f"{settings.TELEGRAM_API_BASE}/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = json.dumps(
+        {
+            "chat_id": chat_id,
+            "text": text,
+        }
+    ).encode("utf-8")
+    request_obj = Request(
+        telegram_url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    response = urlopen(request_obj, timeout=10)
+    response_payload = json.loads(response.read().decode("utf-8") or "{}")
+    return str(response_payload.get("result", {}).get("message_id", "") or "")
+
+
+def notify_admins_about_download_request_issue(download_request, *, reason):
+    owner = download_request.video.profile.user
+    video_title = download_request.video_title_snapshot or download_request.video.title
+    preview_url = download_request.video_preview_url_snapshot or download_request.video.thumbnail_url
+    title = "Download request needs admin follow-up"
+    reason_line = (
+        "The video owner is missing a Telegram chat ID."
+        if reason == "missing_owner_chat_id"
+        else "Telegram delivery to the video owner failed."
+    )
+    message_lines = [
+        reason_line,
+        f"Request ID: {download_request.id}",
+        f"Owner: {owner.username}",
+        f"Requester: {download_request.requester.username}",
+        f"Video: {video_title}",
+        f"Time: {download_request.requested_at.isoformat()}",
+    ]
+    if preview_url:
+        message_lines.append(f"Preview: {preview_url}")
+    message = "\n".join(message_lines)
+    payload = {
+        "reason": reason,
+        "request_id": download_request.id,
+        "owner_username": owner.username,
+        "requester": download_request.requester.username,
+        "video_title": video_title,
+        "video_preview_url": preview_url,
+        "status": download_request.status,
+    }
+
+    admin_users = (
+        User.objects.filter(
+            Q(is_staff=True) | Q(is_superuser=True) | Q(editor_profile__role=AccountRole.ADMIN)
+        )
+        .exclude(pk=owner.pk)
+        .distinct()
+    )
+    for admin_user in admin_users:
+        create_owner_notification(
+            owner=admin_user,
+            notification_type=OwnerNotificationType.DOWNLOAD_REQUEST,
+            video=download_request.video,
+            title=title,
+            message=message,
+            download_request=download_request,
+            payload=payload,
+        )
+        if admin_user.email:
+            try:
+                send_mail(
+                    subject=title,
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[admin_user.email],
+                    fail_silently=True,
+                )
+            except Exception:
+                logger.exception("Failed to send admin fallback download request email.")
+
+
 def notify_owner_about_download_request(download_request, request):
     owner = download_request.video.profile.user
     title = "New download request"
     video_title = download_request.video_title_snapshot or download_request.video.title
     preview_url = download_request.video_preview_url_snapshot or download_request.video.thumbnail_url
     message_lines = [
+        "This request is for YOUR uploaded video.",
         f"Download request #{download_request.id}",
         f"Requester: {download_request.requester.username}",
         f"Video: {video_title}",
@@ -382,31 +470,67 @@ def notify_owner_about_download_request(download_request, request):
         except Exception:
             logger.exception("Failed to send owner download request email.")
 
-    if settings.TELEGRAM_BOT_TOKEN and download_request.video.profile.telegram_chat_id:
+    if download_request.video.profile.telegram_chat_id:
         try:
-            telegram_url = (
-                f"{settings.TELEGRAM_API_BASE}/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
-            )
-            payload = json.dumps(
-                {
-                    "chat_id": download_request.video.profile.telegram_chat_id,
-                    "text": message,
-                }
-            ).encode("utf-8")
-            request_obj = Request(
-                telegram_url,
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            response = urlopen(request_obj, timeout=10)
-            response_payload = json.loads(response.read().decode("utf-8") or "{}")
-            message_id = str(response_payload.get("result", {}).get("message_id", "") or "")
+            message_id = send_telegram_message(download_request.video.profile.telegram_chat_id, message)
             download_request.telegram_chat_id = download_request.video.profile.telegram_chat_id
             download_request.telegram_message_id = message_id
             download_request.save(update_fields=["telegram_chat_id", "telegram_message_id"])
         except Exception:
             logger.exception("Failed to send owner download request Telegram message.")
+            notify_admins_about_download_request_issue(
+                download_request,
+                reason="owner_telegram_delivery_failed",
+            )
+    else:
+        notify_admins_about_download_request_issue(
+            download_request,
+            reason="missing_owner_chat_id",
+        )
+
+
+def notify_requester_about_download_decision(download_request):
+    video_title = download_request.video_title_snapshot or download_request.video.title
+    approved = download_request.status == DownloadRequestStatus.APPROVED
+    title = "Download request approved" if approved else "Download request rejected"
+    decision_line = (
+        f"Your request for '{video_title}' was approved."
+        if approved
+        else f"Your request for '{video_title}' was rejected."
+    )
+    message_lines = [
+        decision_line,
+        f"Request ID: {download_request.id}",
+        f"Video: {video_title}",
+        (
+            "Download access is now enabled for this specific video."
+            if approved
+            else "Access was not granted for this specific video."
+        ),
+    ]
+    if download_request.owner_response_message:
+        message_lines.append(f"Owner response: {download_request.owner_response_message}")
+    message = "\n".join(message_lines)
+
+    requester_email = (download_request.requester.email or "").strip()
+    if requester_email:
+        try:
+            send_mail(
+                subject=title,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[requester_email],
+                fail_silently=True,
+            )
+        except Exception:
+            logger.exception("Failed to send requester download decision email.")
+
+    requester_chat_id = getattr(download_request.requester.editor_profile, "telegram_chat_id", "").strip()
+    if requester_chat_id:
+        try:
+            send_telegram_message(requester_chat_id, message)
+        except Exception:
+            logger.exception("Failed to send requester download decision Telegram message.")
 
 
 def build_stream_file_url(request, video, token):

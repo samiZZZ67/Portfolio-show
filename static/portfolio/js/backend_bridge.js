@@ -1366,8 +1366,9 @@
 
   function ensureSignupEnhancements() {
     const usernameGroup = document.getElementById("signupUsername")?.closest("div");
+    const emailGroup = document.getElementById("signupEmail")?.closest("div");
     const bioGroup = document.getElementById("signupBio")?.closest("div");
-    if (!usernameGroup || !bioGroup) {
+    if (!usernameGroup || !emailGroup || !bioGroup) {
       return;
     }
 
@@ -1386,6 +1387,22 @@
         `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Display Name / cname</label>` +
         `<input type="text" class="input-field" id="signupCname" placeholder="How you want to appear publicly">`;
       usernameGroup.parentNode.insertBefore(cnameBlock, usernameGroup.nextSibling);
+
+      const telegramBlock = document.createElement("div");
+      telegramBlock.id = "signupTelegramBlock";
+      telegramBlock.innerHTML =
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Telegram Username</label>` +
+        `<input type="text" class="input-field" id="signupTelegram" placeholder="@username">` +
+        `<p style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Required for editor accounts. Add either a Telegram username or a Telegram chat ID.</p>`;
+      emailGroup.insertAdjacentElement("afterend", telegramBlock);
+
+      const telegramChatBlock = document.createElement("div");
+      telegramChatBlock.id = "signupTelegramChatBlock";
+      telegramChatBlock.innerHTML =
+        `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Telegram Chat ID</label>` +
+        `<input type="text" class="input-field" id="signupTelegramChatId" placeholder="Telegram chat ID (recommended)">` +
+        `<p style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Chat ID is recommended so access requests can go straight to your Telegram inbox.</p>`;
+      telegramBlock.insertAdjacentElement("afterend", telegramChatBlock);
 
       const avatarBlock = document.createElement("div");
       avatarBlock.innerHTML =
@@ -1469,6 +1486,19 @@
       setupBlock.style.padding = "18px";
       setupBlock.style.marginBottom = "18px";
       profileCard.insertBefore(setupBlock, profileCard.firstChild.nextSibling);
+    }
+
+    if (!document.getElementById("contactTelegramChatId")) {
+      const telegramGroup = document.getElementById("contactTelegram")?.closest("div");
+      if (telegramGroup) {
+        const chatIdBlock = document.createElement("div");
+        chatIdBlock.innerHTML =
+          `<label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:flex;align-items:center;gap:6px;">` +
+          `<i class="fas fa-hashtag" style="color:#0088cc;"></i> Telegram Chat ID</label>` +
+          `<input type="text" class="input-field" id="contactTelegramChatId" placeholder="Telegram chat ID">` +
+          `<p style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Recommended for editors so access requests can be delivered directly through Telegram.</p>`;
+        telegramGroup.insertAdjacentElement("afterend", chatIdBlock);
+      }
     }
 
     if (!document.getElementById("otherContactsManager")) {
@@ -1740,6 +1770,11 @@
       formData.append("username", document.getElementById("signupUsername").value.trim());
       formData.append("password", document.getElementById("signupPassword").value);
       formData.append("email", document.getElementById("signupEmail").value.trim());
+      formData.append("telegram", document.getElementById("signupTelegram")?.value.trim() || "");
+      formData.append(
+        "telegram_chat_id",
+        document.getElementById("signupTelegramChatId")?.value.trim() || ""
+      );
       formData.append("bio", document.getElementById("signupBio").value.trim());
       if (hasAvatarFile) {
         formData.append("avatar_file", avatarFileInput.files[0]);
@@ -1757,6 +1792,12 @@
       document.getElementById("signupUsername").value = "";
       document.getElementById("signupPassword").value = "";
       document.getElementById("signupEmail").value = "";
+      if (document.getElementById("signupTelegram")) {
+        document.getElementById("signupTelegram").value = "";
+      }
+      if (document.getElementById("signupTelegramChatId")) {
+        document.getElementById("signupTelegramChatId").value = "";
+      }
       document.getElementById("signupBio").value = "";
       if (document.getElementById("signupAvatarFile")) {
         document.getElementById("signupAvatarFile").value = "";
@@ -1850,6 +1891,7 @@
       const payload = await postForm("/api/contacts/", {
         email: document.getElementById("contactEmail").value.trim(),
         telegram: document.getElementById("contactTelegram").value.trim(),
+        telegram_chat_id: document.getElementById("contactTelegramChatId")?.value.trim() || "",
         whatsapp: document.getElementById("contactWhatsapp").value.trim(),
         phone: document.getElementById("contactPhone").value.trim(),
         other_contacts_json: JSON.stringify(collectOtherContacts()),
@@ -2272,6 +2314,21 @@
       document.getElementById("editUsername").value = editor.username;
       document.getElementById("editBio").value = editor.bio || "";
       document.getElementById("editAvatar").value = editor.avatar_url || "";
+      if (document.getElementById("contactEmail")) {
+        document.getElementById("contactEmail").value = editor.email || "";
+      }
+      if (document.getElementById("contactTelegram")) {
+        document.getElementById("contactTelegram").value = editor.telegram || "";
+      }
+      if (document.getElementById("contactTelegramChatId")) {
+        document.getElementById("contactTelegramChatId").value = editor.telegram_chat_id || "";
+      }
+      if (document.getElementById("contactWhatsapp")) {
+        document.getElementById("contactWhatsapp").value = editor.whatsapp || "";
+      }
+      if (document.getElementById("contactPhone")) {
+        document.getElementById("contactPhone").value = editor.phone || "";
+      }
       if (document.getElementById("editCname")) {
         document.getElementById("editCname").value = editor.cname || "";
       }

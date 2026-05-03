@@ -34,6 +34,29 @@ RESERVED_USERNAMES = {
     "static",
 }
 
+TELEGRAM_USERNAME_PATTERN = re.compile(r"^@?[A-Za-z0-9_]{5,32}$")
+TELEGRAM_CHAT_ID_PATTERN = re.compile(r"^-?\d{5,20}$")
+
+
+def normalize_telegram_username(value):
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    if not TELEGRAM_USERNAME_PATTERN.match(normalized):
+        raise ValidationError("Enter a valid Telegram username like @yourname.")
+    if not normalized.startswith("@"):
+        normalized = f"@{normalized}"
+    return normalized.lower()
+
+
+def normalize_telegram_chat_id(value):
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    if not TELEGRAM_CHAT_ID_PATTERN.match(normalized):
+        raise ValidationError("Enter a valid Telegram chat ID.")
+    return normalized
+
 
 class SignUpForm(forms.Form):
     role = forms.ChoiceField(
@@ -75,6 +98,14 @@ class SignUpForm(forms.Form):
                 "placeholder": "your@email.com",
             }
         ),
+    )
+    telegram = forms.CharField(
+        required=False,
+        max_length=64,
+    )
+    telegram_chat_id = forms.CharField(
+        required=False,
+        max_length=64,
     )
     bio = forms.CharField(
         required=False,
@@ -121,6 +152,27 @@ class SignUpForm(forms.Form):
             raise ValidationError("Profile images must be 10 MB or smaller.")
         return avatar_file
 
+    def clean_telegram(self):
+        telegram = normalize_telegram_username(self.cleaned_data.get("telegram", ""))
+        if telegram and EditorProfile.objects.filter(telegram=telegram).exists():
+            raise ValidationError("This Telegram username is already linked to another account.")
+        return telegram
+
+    def clean_telegram_chat_id(self):
+        telegram_chat_id = normalize_telegram_chat_id(self.cleaned_data.get("telegram_chat_id", ""))
+        if telegram_chat_id and EditorProfile.objects.filter(telegram_chat_id=telegram_chat_id).exists():
+            raise ValidationError("This Telegram chat ID is already linked to another account.")
+        return telegram_chat_id
+
+    def clean(self):
+        cleaned_data = super().clean()
+        role = cleaned_data.get("role")
+        if role == AccountRole.EDITOR and not (
+            cleaned_data.get("telegram") or cleaned_data.get("telegram_chat_id")
+        ):
+            raise ValidationError("Editor accounts must include a Telegram username or Telegram chat ID.")
+        return cleaned_data
+
     @transaction.atomic
     def save(self):
         user = User.objects.create_user(
@@ -132,9 +184,21 @@ class SignUpForm(forms.Form):
         profile.role = self.cleaned_data.get("role") or AccountRole.EDITOR
         profile.cname = self.cleaned_data.get("cname", "").strip()
         profile.bio = self.cleaned_data["bio"] or EditorProfile.default_bio
+        profile.telegram = self.cleaned_data.get("telegram", "")
+        profile.telegram_chat_id = self.cleaned_data.get("telegram_chat_id", "")
         if self.cleaned_data.get("avatar_file"):
             profile.avatar_file = self.cleaned_data["avatar_file"]
-        profile.save(update_fields=["role", "cname", "bio", "avatar_file", "updated_at"])
+        profile.save(
+            update_fields=[
+                "role",
+                "cname",
+                "bio",
+                "telegram",
+                "telegram_chat_id",
+                "avatar_file",
+                "updated_at",
+            ]
+        )
         return user
 
 
@@ -316,6 +380,17 @@ class ContactForm(forms.Form):
             }
         ),
     )
+    telegram_chat_id = forms.CharField(
+        required=False,
+        max_length=64,
+        widget=forms.TextInput(
+            attrs={
+                "id": "contactTelegramChatId",
+                "class": "input-field",
+                "placeholder": "Telegram chat ID",
+            }
+        ),
+    )
     whatsapp = forms.CharField(
         required=False,
         max_length=32,
@@ -339,6 +414,24 @@ class ContactForm(forms.Form):
         ),
     )
     other_contacts_json = forms.CharField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        self.profile = kwargs.pop("profile", None)
+        super().__init__(*args, **kwargs)
+
+    def clean_telegram(self):
+        telegram = normalize_telegram_username(self.cleaned_data.get("telegram", ""))
+        queryset = EditorProfile.objects.exclude(pk=getattr(self.profile, "pk", None))
+        if telegram and queryset.filter(telegram=telegram).exists():
+            raise ValidationError("This Telegram username is already linked to another account.")
+        return telegram
+
+    def clean_telegram_chat_id(self):
+        telegram_chat_id = normalize_telegram_chat_id(self.cleaned_data.get("telegram_chat_id", ""))
+        queryset = EditorProfile.objects.exclude(pk=getattr(self.profile, "pk", None))
+        if telegram_chat_id and queryset.filter(telegram_chat_id=telegram_chat_id).exists():
+            raise ValidationError("This Telegram chat ID is already linked to another account.")
+        return telegram_chat_id
 
     def clean_other_contacts_json(self):
         raw_value = self.cleaned_data.get("other_contacts_json", "").strip()
@@ -383,23 +476,38 @@ class ContactForm(forms.Form):
             [
                 cleaned_data.get("email"),
                 cleaned_data.get("telegram"),
+                cleaned_data.get("telegram_chat_id"),
                 cleaned_data.get("whatsapp"),
                 cleaned_data.get("phone"),
                 cleaned_data.get("other_contacts_json"),
             ]
         ):
             raise ValidationError("At least one contact method is required.")
+        if self.profile and self.profile.role == AccountRole.EDITOR and not (
+            cleaned_data.get("telegram") or cleaned_data.get("telegram_chat_id")
+        ):
+            raise ValidationError(
+                "Editor accounts must keep a Telegram username or Telegram chat ID on file."
+            )
         return cleaned_data
 
     def save(self, user, profile):
         user.email = self.cleaned_data["email"]
         user.save(update_fields=["email"])
         profile.telegram = self.cleaned_data["telegram"]
+        profile.telegram_chat_id = self.cleaned_data["telegram_chat_id"]
         profile.whatsapp = self.cleaned_data["whatsapp"]
         profile.phone = self.cleaned_data["phone"]
         profile.other_contacts = self.cleaned_data["other_contacts_json"]
         profile.save(
-            update_fields=["telegram", "whatsapp", "phone", "other_contacts", "updated_at"]
+            update_fields=[
+                "telegram",
+                "telegram_chat_id",
+                "whatsapp",
+                "phone",
+                "other_contacts",
+                "updated_at",
+            ]
         )
         return profile
 

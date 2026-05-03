@@ -57,6 +57,7 @@ from .services import (
     issue_stream_token,
     is_publicly_viewable,
     like_count,
+    notify_requester_about_download_decision,
     notify_owner_about_download_request,
     open_local_media_file,
     proxy_cloudinary_asset,
@@ -406,6 +407,7 @@ class OwnerDownloadRequestReviewAPIView(APIView):
             grant_download_access(download_request, reviewer=request.user)
         else:
             revoke_download_access(download_request)
+        notify_requester_about_download_decision(download_request)
 
         event_type = (
             VideoAccessEventType.DOWNLOAD_APPROVED

@@ -163,6 +163,18 @@ class EditorProfile(models.Model):
 
     class Meta:
         ordering = ["user__username"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["telegram"],
+                condition=~models.Q(telegram=""),
+                name="unique_nonblank_editorprofile_telegram",
+            ),
+            models.UniqueConstraint(
+                fields=["telegram_chat_id"],
+                condition=~models.Q(telegram_chat_id=""),
+                name="unique_nonblank_editorprofile_telegram_chat_id",
+            ),
+        ]
 
     def __str__(self):
         return self.user.username
@@ -199,6 +211,10 @@ class EditorProfile(models.Model):
 
     def has_contact_method(self):
         return any([self.user.email, self.telegram, self.whatsapp, self.phone, self.other_contacts])
+
+    @property
+    def has_telegram_binding(self):
+        return bool(self.telegram or self.telegram_chat_id)
 
     @property
     def is_public_profile(self):

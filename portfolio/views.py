@@ -404,6 +404,7 @@ def serialize_profile(profile, following_ids=None, current_profile=None):
         "skills": skills,
         "email": profile.user.email or "",
         "telegram": profile.telegram or "",
+        "telegram_chat_id": profile.telegram_chat_id if current_profile and current_profile.id == profile.id else "",
         "whatsapp": profile.whatsapp or "",
         "phone": profile.phone or "",
         "other_contacts": profile.other_contacts or [],
@@ -754,7 +755,7 @@ def profile_update_view(request):
 @api_login_required
 def contact_update_view(request):
     profile = request.user.editor_profile
-    form = ContactForm(request.POST)
+    form = ContactForm(request.POST, profile=profile)
     if not form.is_valid():
         return json_error_response(form)
     form.save(request.user, profile)

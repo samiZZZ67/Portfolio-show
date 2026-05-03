@@ -4,6 +4,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -125,6 +126,7 @@ class PortfolioApiTests(TestCase):
                 "username": "EditorOne",
                 "password": "StrongPass123!",
                 "email": "editorone@example.com",
+                "telegram": "@editorone",
                 "bio": "Fast turnaround editor.",
             },
         )
@@ -134,7 +136,28 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(user.editor_profile.bio, "Fast turnaround editor.")
         self.assertEqual(user.editor_profile.cname, "Studio Alpha")
         self.assertEqual(user.editor_profile.role, AccountRole.EDITOR)
+        self.assertEqual(user.editor_profile.telegram, "@editorone")
         self.assertEqual(self.client.session.get("_auth_user_id"), str(user.pk))
+
+    def test_editor_signup_requires_telegram_binding(self):
+        response = self.client.post(
+            reverse("portfolio:signup"),
+            {
+                "role": AccountRole.EDITOR,
+                "cname": "No Telegram Studio",
+                "username": "NoTelegramEditor",
+                "password": "StrongPass123!",
+                "email": "notelegram@example.com",
+                "bio": "Missing Telegram.",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(username="NoTelegramEditor").exists())
+        self.assertContains(
+            response,
+            "Editor accounts must include a Telegram username or Telegram chat ID.",
+            status_code=400,
+        )
 
     def test_public_signup_rejects_admin_role(self):
         response = self.client.post(
@@ -160,6 +183,7 @@ class PortfolioApiTests(TestCase):
                 "username": "SharedOne",
                 "password": "StrongPass123!",
                 "email": "sharedone@example.com",
+                "telegram": "@sharedone",
                 "bio": "First account.",
             },
         )
@@ -318,6 +342,7 @@ class PortfolioApiTests(TestCase):
             {
                 "email": "",
                 "telegram": "",
+                "telegram_chat_id": "",
                 "whatsapp": "",
                 "phone": "",
             },
@@ -336,7 +361,8 @@ class PortfolioApiTests(TestCase):
             reverse("portfolio:contact-update"),
             {
                 "email": "editorlinks@example.com",
-                "telegram": "",
+                "telegram": "@editorlinks",
+                "telegram_chat_id": "",
                 "whatsapp": "",
                 "phone": "",
                 "other_contacts_json": '[{"label":"LinkedIn","value":"linkedin.com/in/editorlinks"}]',
@@ -347,6 +373,30 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(
             user.editor_profile.other_contacts,
             [{"label": "LinkedIn", "value": "https://linkedin.com/in/editorlinks"}],
+        )
+
+    def test_editor_contact_update_requires_telegram_binding(self):
+        user = User.objects.create_user(
+            username="EditorNeedsTelegram",
+            password="SecurePass123!",
+            email="editorneedstelegram@example.com",
+        )
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse("portfolio:contact-update"),
+            {
+                "email": "editorneedstelegram@example.com",
+                "telegram": "",
+                "telegram_chat_id": "",
+                "whatsapp": "+251900000000",
+                "phone": "",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(
+            response,
+            "Editor accounts must keep a Telegram username or Telegram chat ID on file.",
+            status_code=400,
         )
 
     def test_bootstrap_returns_logged_in_editor_portfolio(self):
@@ -923,6 +973,7 @@ class PortfolioApiTests(TestCase):
         download_request = VideoDownloadRequest.objects.get(requester=requester, video=video)
         self.assertEqual(download_request.status, DownloadRequestStatus.PENDING)
         self.assertTrue(OwnerNotification.objects.filter(owner=owner, video=video).exists())
+        mail.outbox.clear()
 
         self.client.force_login(owner)
         review_response = self.client.post(
@@ -939,6 +990,14 @@ class PortfolioApiTests(TestCase):
                 source_request=download_request,
                 is_active=True,
             ).exists()
+        )
+        self.assertTrue(
+            any(
+                message.subject == "Download request approved"
+                and requester.email in message.to
+                and "Approved Download Reel" in message.body
+                for message in mail.outbox
+            )
         )
 
         notifications_response = self.client.get(reverse("portfolio:secure-owner-notifications"))
@@ -964,6 +1023,125 @@ class PortfolioApiTests(TestCase):
         )
         self.assertEqual(file_response.status_code, 200)
         self.assertIn("attachment;", file_response["Content-Disposition"])
+
+    def test_secure_download_request_missing_owner_chat_id_falls_back_to_admin_notification(self):
+        owner = User.objects.create_user(
+            username="FallbackOwner",
+            password="SecurePass123!",
+            email="fallbackowner@example.com",
+        )
+        owner.editor_profile.telegram = "@fallbackowner"
+        owner.editor_profile.telegram_chat_id = ""
+        owner.editor_profile.save(update_fields=["telegram", "telegram_chat_id"])
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Fallback Download Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "fallback-download.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="fallback-download.mp4",
+            original_format="mp4",
+        )
+        admin_user = User.objects.create_superuser(
+            username="FallbackAdmin",
+            password="SecurePass123!",
+            email="fallbackadmin@example.com",
+        )
+        admin_user.editor_profile.role = AccountRole.ADMIN
+        admin_user.editor_profile.save(update_fields=["role"])
+        requester = User.objects.create_user(
+            username="FallbackRequester",
+            password="SecurePass123!",
+            email="fallbackrequester@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        self.client.force_login(requester)
+        response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Please approve this download."},
+        )
+        self.assertEqual(response.status_code, 201)
+
+        admin_notification = OwnerNotification.objects.filter(
+            owner=admin_user,
+            video=video,
+            download_request__requester=requester,
+        ).order_by("-id").first()
+        self.assertIsNotNone(admin_notification)
+        self.assertEqual(admin_notification.payload.get("reason"), "missing_owner_chat_id")
+
+    def test_requester_receives_email_when_download_request_is_rejected(self):
+        owner = User.objects.create_user(
+            username="RejectOwner",
+            password="SecurePass123!",
+            email="rejectowner@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Rejected Download Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "rejected-download.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="rejected-download.mp4",
+            original_format="mp4",
+        )
+        requester = User.objects.create_user(
+            username="RejectClient",
+            password="SecurePass123!",
+            email="rejectclient@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        self.client.force_login(requester)
+        create_response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Please approve this download."},
+        )
+        self.assertEqual(create_response.status_code, 201)
+        download_request = VideoDownloadRequest.objects.get(requester=requester, video=video)
+        mail.outbox.clear()
+
+        self.client.force_login(owner)
+        review_response = self.client.post(
+            reverse("portfolio:secure-owner-download-review", args=[download_request.id]),
+            {"status": DownloadRequestStatus.REJECTED, "owner_response_message": "Not available."},
+        )
+        self.assertEqual(review_response.status_code, 200)
+        download_request.refresh_from_db()
+        self.assertEqual(download_request.status, DownloadRequestStatus.REJECTED)
+        self.assertFalse(
+            VideoDownloadGrant.objects.filter(
+                user=requester,
+                video=video,
+                source_request=download_request,
+                is_active=True,
+            ).exists()
+        )
+        self.assertTrue(
+            any(
+                message.subject == "Download request rejected"
+                and requester.email in message.to
+                and "Rejected Download Reel" in message.body
+                for message in mail.outbox
+            )
+        )
 
     def test_admin_can_review_download_request_and_create_grant(self):
         owner = User.objects.create_user(
