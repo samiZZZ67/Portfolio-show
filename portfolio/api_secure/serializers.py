@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 from portfolio.models import (
@@ -105,6 +106,8 @@ class VideoDownloadRequestSerializer(serializers.ModelSerializer):
     requester_username = serializers.CharField(source="requester.username", read_only=True)
     owner_username = serializers.CharField(source="video.profile.user.username", read_only=True)
     video_title = serializers.CharField(source="video.title", read_only=True)
+    reviewed_by_username = serializers.CharField(source="reviewed_by.username", read_only=True)
+    download_granted = serializers.SerializerMethodField()
 
     class Meta:
         model = VideoDownloadRequest
@@ -112,17 +115,28 @@ class VideoDownloadRequestSerializer(serializers.ModelSerializer):
             "id",
             "video",
             "video_title",
+            "video_title_snapshot",
+            "video_preview_url_snapshot",
             "requester",
             "requester_username",
             "owner_username",
             "status",
             "request_message",
             "owner_response_message",
+            "reviewed_by_username",
+            "download_granted",
             "requested_at",
             "reviewed_at",
             "approved_at",
         )
         read_only_fields = fields
+
+    def get_download_granted(self, obj):
+        try:
+            grant = obj.download_grant
+        except ObjectDoesNotExist:
+            return False
+        return bool(grant.is_active and grant.revoked_at is None)
 
 
 class OwnerNotificationSerializer(serializers.ModelSerializer):

@@ -25,6 +25,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .forms import ContactForm, LoginForm, ProfileForm, SignUpForm, VideoForm, VideoMoveForm
 from .models import (
     AccountRole,
+    EditorSkill,
     EditorProfile,
     FollowRelationship,
     PortfolioVideo,
@@ -119,6 +120,13 @@ def profile_queryset():
             Prefetch(
                 "videos__ratings",
                 queryset=VideoStarRating.objects.select_related("profile__user").order_by("created_at"),
+            ),
+            Prefetch(
+                "skills",
+                queryset=EditorSkill.objects.select_related("skill").order_by(
+                    "skill__sort_order",
+                    "skill__name",
+                ),
             ),
         )
     )
@@ -320,6 +328,7 @@ def serialize_video(video, current_profile=None):
 
 def serialize_profile(profile, following_ids=None, current_profile=None):
     videos = list(profile.videos.all())
+    skills = [editor_skill.skill.name for editor_skill in profile.skills.all()]
     setup_state = {
         "needs_avatar": not profile.has_custom_avatar,
         "needs_contact": not profile.has_contact_method(),
@@ -337,6 +346,7 @@ def serialize_profile(profile, following_ids=None, current_profile=None):
         "avatar": profile_avatar_src(profile),
         "avatar_url": profile.avatar_url or "",
         "has_custom_avatar": profile.has_custom_avatar,
+        "skills": skills,
         "email": profile.user.email or "",
         "telegram": profile.telegram or "",
         "whatsapp": profile.whatsapp or "",
@@ -370,7 +380,8 @@ def build_bootstrap_payload(request):
         "current_user": request.user.username if request.user.is_authenticated else None,
         "current_user_role": current_profile.role if current_profile else None,
         "current_user_can_access_admin": bool(
-            request.user.is_authenticated and request.user.is_staff
+            request.user.is_authenticated
+            and (request.user.is_staff or (current_profile and current_profile.is_admin))
         ),
         "editors": [],
     }

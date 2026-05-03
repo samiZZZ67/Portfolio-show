@@ -2,15 +2,20 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 from django.contrib.admin.exceptions import NotRegistered
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Count, Q
 from django.urls import reverse
 from django.utils.html import format_html
 
 from .models import (
     AccountRole,
+    EditorSkill,
     EditorProfile,
     FollowRelationship,
     PortfolioVideo,
+    SkillTag,
+    VideoDownloadGrant,
+    VideoDownloadRequest,
     VideoReaction,
     VideoStarRating,
 )
@@ -143,6 +148,7 @@ class EditorProfileInline(admin.StackedInline):
         "avatar_file",
         "avatar_url",
         "telegram",
+        "telegram_chat_id",
         "whatsapp",
         "phone",
         "clients_served",
@@ -242,6 +248,12 @@ class PortfolioVideoInline(admin.TabularInline):
         return format_html('<a href="{}" target="_blank" rel="noreferrer">Open video</a>', preview_url)
 
 
+class EditorSkillInline(admin.TabularInline):
+    model = EditorSkill
+    extra = 1
+    autocomplete_fields = ("skill",)
+
+
 @admin.register(EditorProfile)
 class EditorProfileAdmin(admin.ModelAdmin):
     list_display = (
@@ -282,8 +294,8 @@ class EditorProfileAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
-    inlines = (PortfolioVideoInline,)
-    actions = ("make_selected_editors", "make_selected_clients")
+    inlines = (PortfolioVideoInline, EditorSkillInline)
+    actions = ("make_selected_admins", "make_selected_editors", "make_selected_clients")
     list_per_page = 25
 
     fieldsets = (
@@ -342,6 +354,11 @@ class EditorProfileAdmin(admin.ModelAdmin):
             following_total_count=Count("following_relationships", distinct=True),
         )
 
+    @admin.action(description="Change selected profiles to admins")
+    def make_selected_admins(self, request, queryset):
+        updated = queryset.update(role=AccountRole.ADMIN)
+        self.message_user(request, f"{updated} profile(s) changed to admin.")
+
     @admin.action(description="Change selected profiles to editors")
     def make_selected_editors(self, request, queryset):
         updated = queryset.update(role=AccountRole.EDITOR)
@@ -367,7 +384,10 @@ class EditorProfileAdmin(admin.ModelAdmin):
 
     @admin.display(description="Role", ordering="role")
     def role_badge(self, obj):
-        if obj.role == AccountRole.EDITOR:
+        if obj.role == AccountRole.ADMIN:
+            color = "#153e75"
+            background = "#e6f0ff"
+        elif obj.role == AccountRole.EDITOR:
             color = "#176b3a"
             background = "#e7f7ed"
         else:
@@ -554,6 +574,64 @@ class PortfolioVideoAdmin(admin.ModelAdmin):
         if obj.url:
             return format_html('<a href="{}" target="_blank" rel="noreferrer">{}</a>', obj.url, obj.url)
         return "No preview available."
+
+
+@admin.register(SkillTag)
+class SkillTagAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "sort_order", "updated_at")
+    search_fields = ("name", "slug")
+    ordering = ("sort_order", "name")
+
+
+@admin.register(EditorSkill)
+class EditorSkillAdmin(admin.ModelAdmin):
+    list_display = ("profile", "skill", "created_at")
+    list_select_related = ("profile", "profile__user", "skill")
+    search_fields = ("profile__user__username", "profile__cname", "skill__name")
+    autocomplete_fields = ("profile", "skill")
+    date_hierarchy = "created_at"
+
+
+@admin.register(VideoDownloadRequest)
+class VideoDownloadRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "video",
+        "requester",
+        "status",
+        "has_active_grant",
+        "requested_at",
+        "reviewed_at",
+    )
+    list_filter = ("status", "requested_at", "reviewed_at")
+    list_select_related = ("video", "video__profile", "video__profile__user", "requester", "reviewed_by")
+    search_fields = (
+        "video__title",
+        "requester__username",
+        "video__profile__user__username",
+        "video_title_snapshot",
+    )
+    autocomplete_fields = ("video", "requester", "reviewed_by")
+    readonly_fields = ("requested_at", "reviewed_at", "approved_at")
+    date_hierarchy = "requested_at"
+
+    @admin.display(boolean=True, description="Grant")
+    def has_active_grant(self, obj):
+        try:
+            grant = obj.download_grant
+        except ObjectDoesNotExist:
+            grant = None
+        return bool(grant and grant.is_active and grant.revoked_at is None)
+
+
+@admin.register(VideoDownloadGrant)
+class VideoDownloadGrantAdmin(admin.ModelAdmin):
+    list_display = ("user", "video", "granted_by", "is_active", "created_at", "revoked_at")
+    list_filter = ("is_active", "created_at", "revoked_at")
+    list_select_related = ("user", "video", "video__profile", "video__profile__user", "granted_by")
+    search_fields = ("user__username", "video__title", "video__profile__user__username")
+    autocomplete_fields = ("user", "video", "granted_by", "source_request")
+    date_hierarchy = "created_at"
 
 
 @admin.register(FollowRelationship)

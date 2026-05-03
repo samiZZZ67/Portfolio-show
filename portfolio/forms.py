@@ -19,6 +19,10 @@ from .models import (
 )
 
 MAX_VIDEO_UPLOAD_SIZE_BYTES = 95 * 1024 * 1024
+PUBLIC_ACCOUNT_ROLE_CHOICES = (
+    (AccountRole.EDITOR, "Editor"),
+    (AccountRole.CLIENT, "Client"),
+)
 
 RESERVED_USERNAMES = {
     "admin",
@@ -34,7 +38,7 @@ RESERVED_USERNAMES = {
 class SignUpForm(forms.Form):
     role = forms.ChoiceField(
         required=False,
-        choices=AccountRole.choices,
+        choices=PUBLIC_ACCOUNT_ROLE_CHOICES,
         initial=AccountRole.EDITOR,
     )
     cname = forms.CharField(
@@ -104,6 +108,12 @@ class SignUpForm(forms.Form):
         temp_user = User(username=self.cleaned_data.get("username", ""))
         validate_password(password, user=temp_user)
         return password
+
+    def clean_role(self):
+        role = self.cleaned_data.get("role") or AccountRole.EDITOR
+        if role not in {AccountRole.EDITOR, AccountRole.CLIENT}:
+            raise ValidationError("Only editor and client accounts can be created from public signup.")
+        return role
 
     def clean_avatar_file(self):
         avatar_file = self.cleaned_data.get("avatar_file")

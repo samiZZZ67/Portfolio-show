@@ -12,10 +12,13 @@ from django.urls import reverse
 from .models import (
     AccountRole,
     DownloadRequestStatus,
+    EditorSkill,
     EditorProfile,
     FollowRelationship,
     OwnerNotification,
     PortfolioVideo,
+    SkillTag,
+    VideoDownloadGrant,
     VideoDownloadRequest,
     VideoReaction,
     VideoStarRating,
@@ -132,6 +135,21 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(user.editor_profile.cname, "Studio Alpha")
         self.assertEqual(user.editor_profile.role, AccountRole.EDITOR)
         self.assertEqual(self.client.session.get("_auth_user_id"), str(user.pk))
+
+    def test_public_signup_rejects_admin_role(self):
+        response = self.client.post(
+            reverse("portfolio:signup"),
+            {
+                "role": AccountRole.ADMIN,
+                "cname": "Back Office",
+                "username": "AdminSignupAttempt",
+                "password": "StrongPass123!",
+                "email": "adminsignup@example.com",
+                "bio": "Should not be allowed.",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(username="AdminSignupAttempt").exists())
 
     def test_cname_is_not_unique_but_username_is(self):
         first = self.client.post(
@@ -385,6 +403,23 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(user.editor_profile.clients_served, 12)
         self.assertEqual(user.editor_profile.completed_projects, 48)
         self.assertTrue(user.editor_profile.avatar_file.name.endswith("avatar.png"))
+
+    def test_bootstrap_includes_editor_skills(self):
+        user = User.objects.create_user(
+            username="SkilledEditor",
+            password="SecurePass123!",
+            email="skilleditor@example.com",
+        )
+        skill = SkillTag.objects.create(name="DaVinci Resolve")
+        EditorSkill.objects.create(profile=user.editor_profile, skill=skill)
+
+        response = self.client.get(reverse("portfolio:bootstrap"))
+
+        self.assertEqual(response.status_code, 200)
+        skilled_profile = next(
+            editor for editor in response.json()["editors"] if editor["username"] == "SkilledEditor"
+        )
+        self.assertEqual(skilled_profile["skills"], ["DaVinci Resolve"])
 
     def test_follow_toggle_requires_login_and_persists(self):
         follower = User.objects.create_user(
@@ -805,6 +840,14 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(review_response.status_code, 200)
         download_request.refresh_from_db()
         self.assertEqual(download_request.status, DownloadRequestStatus.APPROVED)
+        self.assertTrue(
+            VideoDownloadGrant.objects.filter(
+                user=requester,
+                video=video,
+                source_request=download_request,
+                is_active=True,
+            ).exists()
+        )
 
         notifications_response = self.client.get(reverse("portfolio:secure-owner-notifications"))
         self.assertEqual(notifications_response.status_code, 200)
@@ -829,6 +872,69 @@ class PortfolioApiTests(TestCase):
         )
         self.assertEqual(file_response.status_code, 200)
         self.assertIn("attachment;", file_response["Content-Disposition"])
+
+    def test_admin_can_review_download_request_and_create_grant(self):
+        owner = User.objects.create_user(
+            username="RequestOwner",
+            password="SecurePass123!",
+            email="requestowner@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Reviewable Reel",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "reviewable.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="reviewable.mp4",
+            original_format="mp4",
+        )
+        requester = User.objects.create_user(
+            username="RequestClient",
+            password="SecurePass123!",
+            email="requestclient@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        self.client.force_login(requester)
+        create_response = self.client.post(
+            reverse("portfolio:secure-video-download-request", args=[video.id]),
+            {"request_message": "Need the approved file."},
+        )
+        self.assertEqual(create_response.status_code, 201)
+        download_request = VideoDownloadRequest.objects.get(requester=requester, video=video)
+
+        admin_user = User.objects.create_superuser(
+            username="ReviewAdmin",
+            password="SecurePass123!",
+            email="reviewadmin@example.com",
+        )
+        admin_user.editor_profile.role = AccountRole.ADMIN
+        admin_user.editor_profile.save(update_fields=["role"])
+
+        self.client.force_login(admin_user)
+        review_response = self.client.post(
+            reverse("portfolio:secure-owner-download-review", args=[download_request.id]),
+            {"status": DownloadRequestStatus.APPROVED, "owner_response_message": "Admin approved."},
+        )
+        self.assertEqual(review_response.status_code, 200)
+        download_request.refresh_from_db()
+        self.assertEqual(download_request.reviewed_by, admin_user)
+        self.assertTrue(
+            VideoDownloadGrant.objects.filter(
+                user=requester,
+                video=video,
+                source_request=download_request,
+                is_active=True,
+            ).exists()
+        )
 
     def test_admin_index_uses_custom_dashboard(self):
         admin_user = User.objects.create_superuser(

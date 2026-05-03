@@ -24,7 +24,12 @@ from portfolio.models import (
     VideoSourceType,
 )
 
-from .permissions import IsAuthenticatedEditor, IsAuthenticatedUser
+from .permissions import (
+    IsAuthenticatedEditor,
+    IsAuthenticatedEditorOrAdmin,
+    IsAuthenticatedUser,
+    has_admin_role,
+)
 from .serializers import (
     DownloadLinkSerializer,
     DownloadRequestCreateSerializer,
@@ -45,6 +50,8 @@ from .services import (
     build_viewer_hash,
     cloudinary_public_id_for_video,
     current_like_state,
+    active_download_grant_for,
+    grant_download_access,
     get_client_ip,
     issue_download_token,
     issue_stream_token,
@@ -55,7 +62,9 @@ from .services import (
     proxy_cloudinary_asset,
     rating_summary,
     record_access_event,
+    revoke_download_access,
     store_secure_video_asset,
+    user_can_download_video,
     verify_download_token,
     verify_stream_token,
 )
@@ -82,16 +91,6 @@ def get_secure_video_or_404(video_id):
 def assert_video_is_public_or_owned(video, request):
     if not is_publicly_viewable(video, request):
         raise Http404("Video not found.")
-
-
-def approved_download_request_for(video, user):
-    if user.id == video.profile.user_id:
-        return None
-    return VideoDownloadRequest.objects.filter(
-        video=video,
-        requester=user,
-        status=DownloadRequestStatus.APPROVED,
-    ).first()
 
 
 class SecureVideoUploadAPIView(APIView):
@@ -302,6 +301,8 @@ class VideoDownloadRequestAPIView(APIView):
         assert_video_is_public_or_owned(video, request)
         if request.user.id == video.profile.user_id:
             raise ValidationError({"detail": "Owners do not need to request their own downloads."})
+        if active_download_grant_for(video, request.user):
+            raise ValidationError({"detail": "You already have download access for this video."})
         if not video.has_uploaded_file and not cloudinary_public_id_for_video(video):
             raise ValidationError({"detail": "This video is not available for secure download."})
 
@@ -313,8 +314,12 @@ class VideoDownloadRequestAPIView(APIView):
             video=video,
             defaults={
                 "status": DownloadRequestStatus.PENDING,
+                "video_title_snapshot": video.title,
+                "video_preview_url_snapshot": video.thumbnail_url,
                 "request_message": serializer.validated_data.get("request_message", ""),
                 "owner_response_message": "",
+                "telegram_message_id": "",
+                "telegram_chat_id": video.profile.telegram_chat_id,
                 "reviewed_at": None,
                 "approved_at": None,
                 "reviewed_by": None,
@@ -336,7 +341,7 @@ class VideoDownloadRequestAPIView(APIView):
 
 
 class OwnerDownloadRequestListAPIView(APIView):
-    permission_classes = (IsAuthenticatedEditor,)
+    permission_classes = (IsAuthenticatedEditorOrAdmin,)
     throttle_classes = (SecureOwnerNotificationsThrottle,)
 
     def get(self, request):
@@ -345,7 +350,11 @@ class OwnerDownloadRequestListAPIView(APIView):
             "video__profile",
             "video__profile__user",
             "requester",
-        ).filter(video__profile__user=request.user)
+            "reviewed_by",
+            "download_grant",
+        )
+        if not has_admin_role(request.user):
+            queryset = queryset.filter(video__profile__user=request.user)
         status_filter = request.GET.get("status", "").strip()
         if status_filter:
             queryset = queryset.filter(status=status_filter)
@@ -354,17 +363,24 @@ class OwnerDownloadRequestListAPIView(APIView):
 
 
 class OwnerDownloadRequestReviewAPIView(APIView):
-    permission_classes = (IsAuthenticatedEditor,)
+    permission_classes = (IsAuthenticatedEditorOrAdmin,)
     throttle_classes = (SecureOwnerReviewThrottle,)
 
     @transaction.atomic
     def post(self, request, request_id):
         download_request = get_object_or_404(
-            VideoDownloadRequest.objects.select_related("video", "video__profile", "video__profile__user", "requester"),
+            VideoDownloadRequest.objects.select_related(
+                "video",
+                "video__profile",
+                "video__profile__user",
+                "requester",
+                "download_grant",
+            ),
             pk=request_id,
         )
-        if download_request.video.profile.user_id != request.user.id:
-            raise PermissionDenied("Only the video owner can review this request.")
+        is_owner = download_request.video.profile.user_id == request.user.id
+        if not (is_owner or has_admin_role(request.user)):
+            raise PermissionDenied("Only the video owner or an admin can review this request.")
 
         serializer = DownloadRequestReviewSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -386,6 +402,10 @@ class OwnerDownloadRequestReviewAPIView(APIView):
                 "approved_at",
             ]
         )
+        if download_request.status == DownloadRequestStatus.APPROVED:
+            grant_download_access(download_request, reviewer=request.user)
+        else:
+            revoke_download_access(download_request)
 
         event_type = (
             VideoAccessEventType.DOWNLOAD_APPROVED
@@ -409,12 +429,10 @@ class SecureVideoDownloadLinkAPIView(APIView):
 
     def get(self, request, video_id):
         video = get_secure_video_or_404(video_id)
-        if request.user.id == video.profile.user_id:
-            download_request = None
-        else:
-            download_request = approved_download_request_for(video, request.user)
-            if download_request is None:
-                raise PermissionDenied("This user does not have approved download access for the video.")
+        if not user_can_download_video(request.user, video):
+            raise PermissionDenied("This user does not have approved download access for the video.")
+        download_grant = active_download_grant_for(video, request.user)
+        download_request = download_grant.source_request if download_grant else None
 
         token, expires_at = issue_download_token(request.user, video, download_request)
         record_access_event(
@@ -446,13 +464,12 @@ class SecureVideoDownloadFileAPIView(APIView):
         if str(video.id) != payload.get("video_id"):
             raise PermissionDenied("Download token does not match this video.")
 
-        if request.user.id == video.profile.user_id:
-            download_request = None
-        else:
-            download_request = approved_download_request_for(video, request.user)
-            if download_request is None:
-                raise PermissionDenied("This user does not have approved download access for the video.")
-            if payload.get("download_request_id") != download_request.id:
+        if not user_can_download_video(request.user, video):
+            raise PermissionDenied("This user does not have approved download access for the video.")
+
+        download_grant = active_download_grant_for(video, request.user)
+        download_request = download_grant.source_request if download_grant else None
+        if download_request and payload.get("download_request_id") != download_request.id:
                 raise PermissionDenied("Download token does not match the approved request.")
 
         file_name = video.original_filename or f"{video.id}.mp4"
@@ -488,11 +505,13 @@ class SecureVideoDownloadFileAPIView(APIView):
 
 
 class OwnerNotificationListAPIView(APIView):
-    permission_classes = (IsAuthenticatedEditor,)
+    permission_classes = (IsAuthenticatedEditorOrAdmin,)
     throttle_classes = (SecureOwnerNotificationsThrottle,)
 
     def get(self, request):
-        queryset = OwnerNotification.objects.select_related("video", "download_request").filter(owner=request.user)
+        queryset = OwnerNotification.objects.select_related("video", "download_request", "owner")
+        if not has_admin_role(request.user):
+            queryset = queryset.filter(owner=request.user)
         unread_only = request.GET.get("unread", "").strip().lower() in {"1", "true", "yes"}
         if unread_only:
             queryset = queryset.filter(is_read=False)
@@ -501,12 +520,15 @@ class OwnerNotificationListAPIView(APIView):
 
 
 class OwnerNotificationReadAPIView(APIView):
-    permission_classes = (IsAuthenticatedEditor,)
+    permission_classes = (IsAuthenticatedEditorOrAdmin,)
     throttle_classes = (SecureOwnerNotificationsThrottle,)
 
     @transaction.atomic
     def post(self, request, notification_id):
-        notification = get_object_or_404(OwnerNotification, pk=notification_id, owner=request.user)
+        queryset = OwnerNotification.objects.all()
+        if not has_admin_role(request.user):
+            queryset = queryset.filter(owner=request.user)
+        notification = get_object_or_404(queryset, pk=notification_id)
         notification.is_read = True
         notification.read_at = timezone.now()
         notification.save(update_fields=["is_read", "read_at"])

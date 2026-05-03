@@ -27,6 +27,7 @@ class VideoCategory(models.TextChoices):
 
 
 class AccountRole(models.TextChoices):
+    ADMIN = "admin", "Admin"
     EDITOR = "editor", "Editor"
     CLIENT = "client", "Client"
 
@@ -181,6 +182,10 @@ class EditorProfile(models.Model):
         return self.cname or self.user.username
 
     @property
+    def is_admin(self):
+        return self.role == AccountRole.ADMIN
+
+    @property
     def is_editor(self):
         return self.role == AccountRole.EDITOR
 
@@ -197,7 +202,7 @@ class EditorProfile(models.Model):
 
     @property
     def is_public_profile(self):
-        return self.is_editor or self.has_contact_method()
+        return self.is_editor or (self.is_client and self.has_contact_method())
 
     def setup_state(self):
         return {
@@ -205,6 +210,58 @@ class EditorProfile(models.Model):
             "needs_contact": not self.has_contact_method(),
             "needs_video": self.is_editor and not self.videos.exists(),
         }
+
+
+class SkillTag(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    slug = models.SlugField(max_length=64, unique=True, blank=True)
+    sort_order = models.PositiveIntegerField(default=0, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name).strip("-_") or "skill"
+            candidate = base_slug[:64]
+            suffix = 2
+            while SkillTag.objects.exclude(pk=self.pk).filter(slug=candidate).exists():
+                suffix_text = f"-{suffix}"
+                candidate = f"{base_slug[: max(1, 64 - len(suffix_text))]}{suffix_text}"
+                suffix += 1
+            self.slug = candidate
+        super().save(*args, **kwargs)
+
+
+class EditorSkill(models.Model):
+    profile = models.ForeignKey(
+        EditorProfile,
+        on_delete=models.CASCADE,
+        related_name="skills",
+    )
+    skill = models.ForeignKey(
+        SkillTag,
+        on_delete=models.CASCADE,
+        related_name="editors",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile", "skill"],
+                name="unique_editor_skill",
+            )
+        ]
+        ordering = ["skill__sort_order", "skill__name"]
+
+    def __str__(self):
+        return f"{self.profile.user.username}: {self.skill.name}"
 
 
 class PortfolioVideo(models.Model):
@@ -466,9 +523,14 @@ class VideoDownloadRequest(models.Model):
         max_length=12,
         choices=DownloadRequestStatus.choices,
         default=DownloadRequestStatus.PENDING,
+        db_index=True,
     )
+    video_title_snapshot = models.CharField(max_length=255, blank=True)
+    video_preview_url_snapshot = models.URLField(max_length=500, blank=True)
     request_message = models.TextField(blank=True)
     owner_response_message = models.TextField(blank=True)
+    telegram_message_id = models.CharField(max_length=64, blank=True)
+    telegram_chat_id = models.CharField(max_length=64, blank=True)
     requested_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
@@ -491,6 +553,49 @@ class VideoDownloadRequest(models.Model):
 
     def __str__(self):
         return f"{self.requester.username} -> {self.video_id} ({self.status})"
+
+
+class VideoDownloadGrant(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="video_download_grants",
+    )
+    video = models.ForeignKey(
+        PortfolioVideo,
+        on_delete=models.CASCADE,
+        related_name="download_grants",
+    )
+    granted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="granted_video_downloads",
+        null=True,
+        blank=True,
+    )
+    source_request = models.OneToOneField(
+        VideoDownloadRequest,
+        on_delete=models.SET_NULL,
+        related_name="download_grant",
+        null=True,
+        blank=True,
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "video"],
+                condition=models.Q(is_active=True),
+                name="unique_active_video_download_grant",
+            )
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} -> {self.video_id} ({'active' if self.is_active else 'revoked'})"
 
 
 class OwnerNotification(models.Model):

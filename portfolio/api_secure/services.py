@@ -20,6 +20,7 @@ from django.utils import timezone
 
 from portfolio.models import (
     DownloadRequestStatus,
+    VideoDownloadGrant,
     OwnerNotification,
     OwnerNotificationType,
     PortfolioVideo,
@@ -230,6 +231,52 @@ def rating_summary(video):
     return average, int(aggregate["count"] or 0)
 
 
+def active_download_grant_for(video, user):
+    if not user or not user.is_authenticated or user.id == video.profile.user_id:
+        return None
+    return VideoDownloadGrant.objects.filter(
+        user=user,
+        video=video,
+        is_active=True,
+        revoked_at__isnull=True,
+    ).first()
+
+
+def user_can_download_video(user, video):
+    if not user or not user.is_authenticated:
+        return False
+    if user.id == video.profile.user_id:
+        return True
+    return active_download_grant_for(video, user) is not None
+
+
+def grant_download_access(download_request, reviewer):
+    grant, _created = VideoDownloadGrant.objects.update_or_create(
+        source_request=download_request,
+        defaults={
+            "user": download_request.requester,
+            "video": download_request.video,
+            "granted_by": reviewer,
+            "is_active": True,
+            "revoked_at": None,
+        },
+    )
+    return grant
+
+
+def revoke_download_access(download_request):
+    grant = VideoDownloadGrant.objects.filter(
+        user=download_request.requester,
+        video=download_request.video,
+        is_active=True,
+    ).first()
+    if grant:
+        grant.is_active = False
+        grant.revoked_at = timezone.now()
+        grant.save(update_fields=["is_active", "revoked_at"])
+    return grant
+
+
 def record_access_event(event_type, *, video, request, user=None, download_request=None, viewer_hash="", metadata=None):
     VideoAccessLog.objects.create(
         video=video,
@@ -296,10 +343,17 @@ def create_owner_notification(*, owner, notification_type, video, title, message
 def notify_owner_about_download_request(download_request, request):
     owner = download_request.video.profile.user
     title = "New download request"
-    message = (
-        f"{download_request.requester.username} requested to download "
-        f"\"{download_request.video.title}\"."
-    )
+    video_title = download_request.video_title_snapshot or download_request.video.title
+    preview_url = download_request.video_preview_url_snapshot or download_request.video.thumbnail_url
+    message_lines = [
+        f"Download request #{download_request.id}",
+        f"Requester: {download_request.requester.username}",
+        f"Video: {video_title}",
+        f"Time: {download_request.requested_at.isoformat()}",
+    ]
+    if preview_url:
+        message_lines.append(f"Preview: {preview_url}")
+    message = "\n".join(message_lines)
     create_owner_notification(
         owner=owner,
         notification_type=OwnerNotificationType.DOWNLOAD_REQUEST,
@@ -310,6 +364,8 @@ def notify_owner_about_download_request(download_request, request):
         payload={
             "request_id": download_request.id,
             "requester": download_request.requester.username,
+            "video_title": video_title,
+            "video_preview_url": preview_url,
             "status": download_request.status,
         },
     )
@@ -343,7 +399,12 @@ def notify_owner_about_download_request(download_request, request):
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            urlopen(request_obj, timeout=10)
+            response = urlopen(request_obj, timeout=10)
+            response_payload = json.loads(response.read().decode("utf-8") or "{}")
+            message_id = str(response_payload.get("result", {}).get("message_id", "") or "")
+            download_request.telegram_chat_id = download_request.video.profile.telegram_chat_id
+            download_request.telegram_message_id = message_id
+            download_request.save(update_fields=["telegram_chat_id", "telegram_message_id"])
         except Exception:
             logger.exception("Failed to send owner download request Telegram message.")
 
