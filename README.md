@@ -33,17 +33,21 @@ A role-based video portfolio platform built with Django, allowing video editors 
 - HTML/templates: `2,447` lines
 - CSS: `144` lines
 
-## Image Upload Component
+## Main Page
 
 ![Portfolio Image](https://github.com/samiZZZ67/Assets/blob/main/ela%20sam/Home%20page.png)
 
 <details>
 <summary>Toggle List</summary>
 <ul>
-<li>Main page</li>
-<li>Admin</li>
-<li>About me</li>
-<li>Discover page</li>
+
+<li>## Discover Page</li>
+![Portfolio Image](https://github.com/samiZZZ67/Assets/blob/main/ela%20sam/Discover%20page.png)
+<li>## About me</li>
+![Portfolio Image](https://github.com/samiZZZ67/Assets/blob/main/ela%20sam/About%20me.png)
+<li>## Add Video </li>
+![Portfolio Image](https://github.com/samiZZZ67/Assets/blob/main/ela%20sam/add%20video.png)
+
 </ul>
 </details>
 
