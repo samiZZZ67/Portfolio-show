@@ -1116,18 +1116,16 @@ def telegram_webhook_view(request, secret):
 
             try:
                 profile = EditorProfile.objects.get(telegram__iexact=normalized_telegram)
-                # Update chat_id if not set or different
-                if profile.telegram_chat_id != str(chat_id):
-                    profile.telegram_chat_id = str(chat_id)
-                    profile.save(update_fields=['telegram_chat_id'])
-                    logger.info(f"Updated chat_id for user {profile.user.username}: {chat_id}")
-
-                # Send welcome message
+            except EditorProfile.MultipleObjectsReturned:
+                logger.exception(
+                    "Multiple portfolio accounts matched Telegram username %s during webhook onboarding.",
+                    normalized_telegram,
+                )
                 welcome_text = (
-                    f"Hello {profile.display_name}!\n\n"
-                    "Your Telegram is now connected to your portfolio account.\n"
-                    "You'll receive notifications here when clients request downloads of your videos.\n\n"
-                    f"Chat ID: {chat_id}"
+                    f"Hello! I found more than one portfolio account linked to @{telegram_username}.\n\n"
+                    "Please ask an admin to keep this Telegram username on only one portfolio account, "
+                    "then send /start again.\n\n"
+                    f"Your chat ID is: {chat_id}"
                 )
             except EditorProfile.DoesNotExist:
                 welcome_text = (
@@ -1139,6 +1137,40 @@ def telegram_webhook_view(request, secret):
                     "4. Save your profile\n\n"
                     f"Your chat ID is: {chat_id}"
                 )
+            else:
+                if profile.telegram_chat_id != str(chat_id):
+                    profile.telegram_chat_id = str(chat_id)
+                    try:
+                        profile.save(update_fields=['telegram_chat_id'])
+                    except DatabaseError:
+                        logger.exception(
+                            "Failed to save Telegram chat ID %s for user %s during webhook onboarding.",
+                            chat_id,
+                            profile.user.username,
+                        )
+                        welcome_text = (
+                            f"Hello {profile.display_name}!\n\n"
+                            "I found your portfolio account, but I couldn't finish saving your Telegram chat ID "
+                            "automatically.\n"
+                            "Please add the chat ID below to your profile contact settings or ask an admin to "
+                            "check your Telegram connection.\n\n"
+                            f"Chat ID: {chat_id}"
+                        )
+                    else:
+                        logger.info(f"Updated chat_id for user {profile.user.username}: {chat_id}")
+                        welcome_text = (
+                            f"Hello {profile.display_name}!\n\n"
+                            "Your Telegram is now connected to your portfolio account.\n"
+                            "You'll receive notifications here when clients request downloads of your videos.\n\n"
+                            f"Chat ID: {chat_id}"
+                        )
+                else:
+                    welcome_text = (
+                        f"Hello {profile.display_name}!\n\n"
+                        "Your Telegram is already connected to your portfolio account.\n"
+                        "You'll receive notifications here when clients request downloads of your videos.\n\n"
+                        f"Chat ID: {chat_id}"
+                    )
         else:
             welcome_text = (
                 "Hello! To connect your Telegram to your portfolio account:\n\n"

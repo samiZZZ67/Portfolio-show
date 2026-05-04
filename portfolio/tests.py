@@ -1,3 +1,4 @@
+import json
 import shutil
 import tempfile
 from io import StringIO
@@ -7,6 +8,7 @@ from django.contrib.auth.models import AnonymousUser, User
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.db import DatabaseError
 from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -68,6 +70,67 @@ class PortfolioApiTests(TestCase):
 
         self.assertNotIn("display:none", desktop_admin_slice)
         self.assertNotIn("display:none", mobile_admin_slice)
+
+    @override_settings(TELEGRAM_BOT_TOKEN="test-bot-token", TELEGRAM_WEBHOOK_SECRET="secret123")
+    @patch("portfolio.api_secure.services.send_telegram_message", return_value="tg-message-1")
+    def test_telegram_webhook_returns_ok_when_matching_username_is_duplicated(self, mock_send_telegram):
+        with patch(
+            "portfolio.models.EditorProfile.objects.get",
+            side_effect=EditorProfile.MultipleObjectsReturned,
+        ):
+            response = self.client.post(
+                reverse("portfolio:telegram-webhook", args=["secret123"]),
+                data=json.dumps(
+                    {
+                        "message": {
+                            "chat": {"id": 99887766, "username": "eloicry"},
+                            "text": "/start",
+                        }
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True})
+        mock_send_telegram.assert_called_once()
+
+    @override_settings(TELEGRAM_BOT_TOKEN="test-bot-token", TELEGRAM_WEBHOOK_SECRET="secret123")
+    @patch("portfolio.api_secure.services.send_telegram_message", return_value="tg-message-2")
+    def test_telegram_webhook_returns_ok_when_chat_id_save_fails(self, mock_send_telegram):
+        owner = User.objects.create_user(
+            username="WebhookOwner",
+            password="SecurePass123!",
+            email="webhookowner@example.com",
+        )
+        owner.editor_profile.telegram = "@eloicry"
+        owner.editor_profile.save(update_fields=["telegram"])
+        original_save = EditorProfile.save
+
+        def flaky_save(instance, *args, **kwargs):
+            if instance.pk == owner.editor_profile.pk and kwargs.get("update_fields") == ["telegram_chat_id"]:
+                raise DatabaseError("chat id save failed")
+            return original_save(instance, *args, **kwargs)
+
+        with patch("portfolio.models.EditorProfile.save", autospec=True, side_effect=flaky_save):
+            response = self.client.post(
+                reverse("portfolio:telegram-webhook", args=["secret123"]),
+                data=json.dumps(
+                    {
+                        "message": {
+                            "chat": {"id": 99887766, "username": "eloicry"},
+                            "text": "/start",
+                        }
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True})
+        owner.editor_profile.refresh_from_db()
+        self.assertEqual(owner.editor_profile.telegram_chat_id, "")
+        mock_send_telegram.assert_called_once()
 
     def test_ensure_admin_user_creates_superuser_from_environment(self):
         with patch.dict(
