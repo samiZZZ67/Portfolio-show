@@ -1326,6 +1326,11 @@ class PortfolioApiTests(TestCase):
         payload = response.json()
         self.assertFalse(payload["delivery_confirmed"])
         self.assertEqual(payload["delivery_status"], "admin_fallback_missing_owner_chat_id")
+        self.assertEqual(
+            payload["delivery_message"],
+            "Your request was saved, but the video owner has not connected a Telegram chat ID yet. "
+            "An admin was notified to follow up.",
+        )
 
         admin_notification = OwnerNotification.objects.filter(
             owner=admin_user,
@@ -1386,6 +1391,11 @@ class PortfolioApiTests(TestCase):
         payload = response.json()
         self.assertFalse(payload["delivery_confirmed"])
         self.assertEqual(payload["delivery_status"], "admin_fallback_delivery_failed")
+        self.assertEqual(
+            payload["delivery_message"],
+            "Your request was saved, but we couldn't confirm Telegram delivery to the video owner. "
+            "An admin was notified to follow up.",
+        )
 
         admin_notification = OwnerNotification.objects.filter(
             owner=admin_user,
@@ -1404,6 +1414,11 @@ class PortfolioApiTests(TestCase):
         retry_payload = retry_response.json()
         self.assertFalse(retry_payload["delivery_confirmed"])
         self.assertEqual(retry_payload["delivery_status"], "admin_fallback_delivery_failed")
+        self.assertEqual(
+            retry_payload["delivery_message"],
+            "Your request was saved, but we couldn't confirm Telegram delivery to the video owner. "
+            "An admin was notified to follow up.",
+        )
         self.assertEqual(
             VideoDownloadRequest.objects.filter(requester=requester, video=video).count(),
             1,

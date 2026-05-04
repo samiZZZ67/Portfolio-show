@@ -578,8 +578,8 @@ def notify_owner_about_download_request(download_request, request):
                 "delivery_confirmed": False,
                 "delivery_status": "admin_fallback_delivery_failed",
                 "delivery_message": (
-                    "Request saved, but Telegram delivery to the video owner could not be confirmed. "
-                    "Admin follow-up was notified."
+                    "Your request was saved, but we couldn't confirm Telegram delivery to the video owner. "
+                    "An admin was notified to follow up."
                 ),
                 "telegram_message_id": "",
             }
@@ -592,8 +592,8 @@ def notify_owner_about_download_request(download_request, request):
             "delivery_confirmed": False,
             "delivery_status": "admin_fallback_missing_owner_chat_id",
             "delivery_message": (
-                "Request saved, but the video owner does not have a Telegram chat ID yet. "
-                "Admin follow-up was notified."
+                "Your request was saved, but the video owner has not connected a Telegram chat ID yet. "
+                "An admin was notified to follow up."
             ),
             "telegram_message_id": "",
         }
