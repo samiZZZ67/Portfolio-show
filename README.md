@@ -35,7 +35,7 @@ A role-based video portfolio platform built with Django, allowing video editors 
 
 ## Image Upload Component
 
-![Portfolio Image]()
+![Portfolio Image](https://github.com/samiZZZ67/Assets/blob/main/ela%20sam/Home%20page.png)
 
 <details>
 <summary>Toggle List</summary>
