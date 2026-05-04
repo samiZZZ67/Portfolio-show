@@ -35,255 +35,17 @@ A role-based video portfolio platform built with Django, allowing video editors 
 
 ## Image Upload Component
 
-Here's a professional image upload button with a toggle bar for different processing options:
+![Portfolio Image]()
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Professional Image Upload with Toggle Bar</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f4f4f4;
-        }
-        .upload-container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .upload-button {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.3s;
-            margin-bottom: 20px;
-        }
-        .upload-button:hover {
-            background-color: #0056b3;
-        }
-        .upload-button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-        .toggle-bar {
-            display: flex;
-            background-color: #e9ecef;
-            border-radius: 5px;
-            overflow: hidden;
-            margin-bottom: 20px;
-        }
-        .toggle-option {
-            flex: 1;
-            padding: 10px;
-            text-align: center;
-            cursor: pointer;
-            transition: background-color 0.3s, color 0.3s;
-            border: none;
-            background: transparent;
-        }
-        .toggle-option.active {
-            background-color: #007bff;
-            color: white;
-        }
-        .toggle-option:hover:not(.active) {
-            background-color: #d6d8db;
-        }
-        .file-input {
-            display: none;
-        }
-        .preview {
-            margin-top: 20px;
-            max-width: 100%;
-            border-radius: 5px;
-        }
-    </style>
-</head>
-<body>
-    <div class="upload-container">
-        <h2>Professional Image Upload</h2>
-        <input type="file" id="imageInput" class="file-input" accept="image/*">
-        <button class="upload-button" onclick="document.getElementById('imageInput').click()">Choose Image</button>
-        
-        <div class="toggle-bar" id="uploadModeBar">
-            <button class="toggle-option active" data-mode="standard">Standard</button>
-            <button class="toggle-option" data-mode="compressed">Compressed</button>
-            <button class="toggle-option" data-mode="watermarked">Watermarked</button>
-        </div>
-        
-        <img id="preview" class="preview" style="display: none;" alt="Image Preview">
-    </div>
-
-    <script>
-        const imageInput = document.getElementById('imageInput');
-        const preview = document.getElementById('preview');
-        const uploadButton = document.querySelector('.upload-button');
-        const toggleBar = document.getElementById('uploadModeBar');
-        const toggleOptions = toggleBar.querySelectorAll('.toggle-option');
-        let selectedMode = 'standard';
-
-        toggleOptions.forEach(option => {
-            option.addEventListener('click', function() {
-                toggleOptions.forEach(opt => opt.classList.remove('active'));
-                this.classList.add('active');
-                selectedMode = this.dataset.mode;
-            });
-        });
-
-        imageInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    preview.src = e.target.result;
-                    preview.style.display = 'block';
-                    uploadButton.textContent = 'Upload Image';
-                    uploadButton.disabled = false;
-                };
-                reader.readAsDataURL(file);
-            }
-        });
-
-        uploadButton.addEventListener('click', function() {
-            if (imageInput.files.length > 0) {
-                // Here you would typically send the file to your server
-                // For demo purposes, we'll just show an alert
-                alert(`Uploading image in ${selectedMode} mode`);
-                
-                // Reset after upload
-                uploadButton.textContent = 'Choose Image';
-                uploadButton.disabled = true;
-                preview.style.display = 'none';
-                imageInput.value = '';
-            }
-        });
-    </script>
-</body>
-</html>
-```
-
-## How to Implement Image Upload in Django
-
-Your project already has image upload functionality implemented for user avatars. Here's how it works and how you can implement similar uploads:
-
-### 1. Model Setup
-In your `models.py`, define a field for file uploads:
-
-```python
-from django.db import models
-
-class YourModel(models.Model):
-    image = models.ImageField(upload_to='images/', blank=True, null=True)
-    # or for files
-    file = models.FileField(upload_to='files/', blank=True, null=True)
-```
-
-Your project uses Cloudinary for media storage, so files are uploaded to the cloud.
-
-### 2. Form Setup
-In your `forms.py`, create a form with file input:
-
-```python
-from django import forms
-from django.core.validators import FileExtensionValidator
-
-class ImageUploadForm(forms.Form):
-    image = forms.FileField(
-        validators=[FileExtensionValidator(['jpg', 'jpeg', 'png', 'gif'])]
-    )
-```
-
-Your `ProfileForm` already includes `avatar_file` with validation.
-
-### 3. View Setup
-Handle file uploads in your view:
-
-```python
-from django.shortcuts import render
-from django.http import JsonResponse
-
-def upload_image(request):
-    if request.method == 'POST':
-        form = ImageUploadForm(request.POST, request.FILES)
-        if form.is_valid():
-            # Process the uploaded file
-            uploaded_file = request.FILES['image']
-            # Save to model or handle as needed
-            return JsonResponse({'message': 'Upload successful'})
-    else:
-        form = ImageUploadForm()
-    return render(request, 'upload.html', {'form': form})
-```
-
-Your `profile_update_view` handles avatar uploads using `ProfileForm(request.POST, request.FILES)`.
-
-### 4. Template Setup
-Create a template with proper form encoding:
-
-```html
-<form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Upload</button>
-</form>
-```
-
-### 5. URL Configuration
-Add the view to your `urls.py`:
-
-```python
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('upload/', views.upload_image, name='upload_image'),
-]
-```
-
-### 6. Settings Configuration
-Ensure your `settings.py` has media settings:
-
-```python
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-```
-
-For Cloudinary (as in your project), configure the storage in settings.
-
-### 7. Frontend Integration
-For AJAX uploads, use JavaScript:
-
-```javascript
-const formData = new FormData();
-formData.append('image', fileInput.files[0]);
-
-fetch('/upload/', {
-    method: 'POST',
-    body: formData,
-    headers: {
-        'X-CSRFToken': getCookie('csrftoken')
-    }
-});
-```
-
-Your project uses this pattern in the frontend integration with `backend_bridge.js`.
-
-### Key Points for Your Project
-- Avatar uploads are handled in `profile_update_view` via `POST /api/profile/`
-- Uses `ProfileForm` with `avatar_file` field
-- Files are stored via Cloudinary
-- Frontend sends files via AJAX with proper CSRF tokens
+<details>
+<summary>Toggle List</summary>
+<ul>
+<li>Main page</li>
+<li>Admin</li>
+<li>About me</li>
+<li>Discover page</li>
+</ul>
+</details>
 
 ## Telegram Integration
 
@@ -302,12 +64,6 @@ For video owners to receive Telegram notifications:
 
 For Telegram integration to work, the following environment variables must be set:
 
-```bash
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_API_BASE=https://api.telegram.org  # Optional, defaults to this
-TELEGRAM_WEBHOOK_SECRET=your_webhook_secret_here
-```
-
 ### Bot Setup
 
 To set up Telegram notifications:
@@ -322,31 +78,12 @@ To set up Telegram notifications:
 ### Setting Up the Webhook
 
 1. **Generate a webhook secret** (use a random string):
-   ```bash
-   python -c "import secrets; print(secrets.token_urlsafe(32))"
-   ```
 
 2. **Set the webhook URL** with Telegram:
-   ```bash
-   # Using the management command (recommended)
-   python manage.py setup_telegram_webhook --domain yourdomain.com
-   
-   # Or manually with curl
-   curl -X POST "https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook" \
-        -d "url=https://yourdomain.com/api/telegram/webhook/YOUR_SECRET/"
-   ```
 
 3. **Remove webhook** (if needed):
-   ```bash
-   python manage.py setup_telegram_webhook --domain yourdomain.com --remove
-   ```
 
 3. **Test the webhook**:
-   ```bash
-   curl -X POST "https://yourdomain.com/api/telegram/webhook/YOUR_SECRET/" \
-        -H "Content-Type: application/json" \
-        -d '{"message":{"chat":{"id":123456789,"username":"testuser"},"text":"/start"}}'
-   ```
 
 ### User Onboarding
 
@@ -380,53 +117,22 @@ Users connect their Telegram by:
 ### Setup
 
 1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd portfolio-show
-   ```
-
+   
 2. Create and activate virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
+   
 3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
+   
 4. Set up environment variables:
    Create a `.env` file or set environment variables:
-   ```bash
-   SECRET_KEY=your-secret-key
-   DEBUG=True
-   DATABASE_URL=sqlite:///db.sqlite3
-   CLOUDINARY_CLOUD_NAME=your-cloud-name
-   CLOUDINARY_API_KEY=your-api-key
-   CLOUDINARY_API_SECRET=your-api-secret
-   ```
-
+   
 5. Run migrations:
-   ```bash
-   python manage.py migrate
-   ```
-
+   
 6. Create superuser:
-   ```bash
-   python manage.py createsuperuser
-   ```
-
+   
 7. Collect static files:
-   ```bash
-   python manage.py collectstatic
-   ```
-
+   
 8. Run the development server:
-   ```bash
-   python manage.py runserver
-   ```
-
+   
 Visit `http://localhost:8000` to access the application.
 
 ## Usage
@@ -484,29 +190,6 @@ The application is configured for deployment on Render:
 
 Create a `.env` file in your project root:
 
-```bash
-# Django settings
-SECRET_KEY=your-secret-key-here
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
-
-# Database
-DATABASE_URL=sqlite:///db.sqlite3
-
-# Cloudinary (for file uploads)
-CLOUDINARY_CLOUD_NAME=your-cloud-name
-CLOUDINARY_API_KEY=your-api-key
-CLOUDINARY_API_SECRET=your-api-secret
-
-# Telegram Bot (for notifications)
-TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
-TELEGRAM_WEBHOOK_SECRET=your_secure_random_string
-TELEGRAM_API_BASE=https://api.telegram.org
-
-# Email (optional)
-DEFAULT_FROM_EMAIL=noreply@yourdomain.com
-```
-
 ### Database
 
 Development uses SQLite, production uses PostgreSQL via `dj-database-url`.
@@ -514,10 +197,6 @@ Development uses SQLite, production uses PostgreSQL via `dj-database-url`.
 ## Development
 
 ### Running Tests
-
-```bash
-python manage.py test
-```
 
 ### Code Style
 

@@ -71,6 +71,14 @@ class PortfolioApiTests(TestCase):
         self.assertNotIn("display:none", desktop_admin_slice)
         self.assertNotIn("display:none", mobile_admin_slice)
 
+    def test_frontend_shell_serves_custom_admin_route(self):
+        response = self.client.get(reverse("portfolio:admin-dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('id="adminPage"', body)
+        self.assertIn("Admin Dashboard", body)
+
     @override_settings(TELEGRAM_BOT_TOKEN="test-bot-token", TELEGRAM_WEBHOOK_SECRET="secret123")
     @patch("portfolio.api_secure.services.send_telegram_message", return_value="tg-message-1")
     def test_telegram_webhook_returns_ok_when_matching_username_is_duplicated(self, mock_send_telegram):
@@ -331,6 +339,82 @@ class PortfolioApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["current_user"], "RegularBootstrap")
         self.assertFalse(payload["current_user_can_access_admin"])
+
+    def test_admin_overview_requires_admin_access(self):
+        user = User.objects.create_user(
+            username="NoAdminOverview",
+            password="SecurePass123!",
+            email="viewer@example.com",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("portfolio:secure-admin-overview"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_overview_returns_summary_for_role_admin(self):
+        admin_user = User.objects.create_user(
+            username="RoleAdminOverview",
+            password="SecurePass123!",
+            email="roleadmin@example.com",
+        )
+        admin_user.editor_profile.role = AccountRole.ADMIN
+        admin_user.editor_profile.save(update_fields=["role"])
+        editor_user = User.objects.create_user(
+            username="OverviewEditor",
+            password="SecurePass123!",
+            email="editor@example.com",
+        )
+        PortfolioVideo.objects.create(
+            profile=editor_user.editor_profile,
+            title="Overview Reel",
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("portfolio:secure-admin-overview"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["summary"]["users_total"], User.objects.count())
+        self.assertEqual(
+            payload["summary"]["admins_total"],
+            EditorProfile.objects.filter(role=AccountRole.ADMIN).count(),
+        )
+        self.assertEqual(payload["summary"]["videos_total"], PortfolioVideo.objects.count())
+        usernames = [profile["username"] for profile in payload["profiles"]]
+        self.assertIn("RoleAdminOverview", usernames)
+        self.assertIn("OverviewEditor", usernames)
+
+    def test_admin_role_update_endpoint_changes_profile_role(self):
+        admin_user = User.objects.create_user(
+            username="RoleManager",
+            password="SecurePass123!",
+            email="manager@example.com",
+        )
+        admin_user.editor_profile.role = AccountRole.ADMIN
+        admin_user.editor_profile.save(update_fields=["role"])
+        target_user = User.objects.create_user(
+            username="RoleTarget",
+            password="SecurePass123!",
+            email="target@example.com",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("portfolio:secure-admin-profile-role", args=[target_user.username]),
+            data=json.dumps({"role": AccountRole.CLIENT}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        target_user.editor_profile.refresh_from_db()
+        self.assertEqual(target_user.editor_profile.role, AccountRole.CLIENT)
+        self.assertEqual(response.json()["profile"]["role"], AccountRole.CLIENT)
 
     def test_editor_profile_link_is_public_and_case_insensitive(self):
         user = User.objects.create_user(

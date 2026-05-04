@@ -3,7 +3,7 @@ from urllib.parse import unquote
 
 from cloudinary.exceptions import Error as CloudinaryError
 from django.db import DatabaseError, transaction
-from django.db.models import F
+from django.db.models import Count, F
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -14,7 +14,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from portfolio.models import (
+    AccountRole,
     DownloadRequestStatus,
+    EditorProfile,
     OwnerNotification,
     PortfolioVideo,
     VideoAccessEventType,
@@ -25,6 +27,7 @@ from portfolio.models import (
 )
 
 from .permissions import (
+    IsAuthenticatedAdmin,
     IsAuthenticatedEditor,
     IsAuthenticatedEditorOrAdmin,
     IsAuthenticatedUser,
@@ -92,6 +95,173 @@ def get_secure_video_or_404(video_id):
 def assert_video_is_public_or_owned(video, request):
     if not is_publicly_viewable(video, request):
         raise Http404("Video not found.")
+
+
+def serialize_admin_profile(profile):
+    videos_count = getattr(profile, "videos_count", 0)
+    setup_state = {
+        "needs_avatar": not profile.has_custom_avatar,
+        "needs_contact": not profile.has_contact_method(),
+        "needs_video": profile.is_editor and not videos_count,
+    }
+    setup_state["is_complete"] = not any(setup_state.values())
+    contact_methods_count = sum(
+        1
+        for value in (profile.user.email, profile.telegram, profile.telegram_chat_id, profile.whatsapp, profile.phone)
+        if value
+    ) + len(profile.other_contacts or [])
+    return {
+        "user_id": profile.user_id,
+        "username": profile.user.username,
+        "display_name": profile.display_name,
+        "role": profile.role,
+        "role_label": profile.get_role_display(),
+        "email": profile.user.email or "",
+        "telegram": profile.telegram or "",
+        "telegram_chat_id": profile.telegram_chat_id or "",
+        "whatsapp": profile.whatsapp or "",
+        "phone": profile.phone or "",
+        "contact_methods_count": contact_methods_count,
+        "public_url": f"/{profile.user.username}/",
+        "is_public_profile": profile.is_public_profile,
+        "has_custom_avatar": profile.has_custom_avatar,
+        "videos_count": videos_count,
+        "followers_count": getattr(profile, "followers_count", 0),
+        "following_count": getattr(profile, "following_count", 0),
+        "clients_served": profile.clients_served,
+        "completed_projects": profile.completed_projects,
+        "updated_at": profile.updated_at,
+        "setup": setup_state,
+    }
+
+
+class AdminOverviewAPIView(APIView):
+    permission_classes = (IsAuthenticatedAdmin,)
+    throttle_classes = (SecureOwnerNotificationsThrottle,)
+
+    def get(self, request):
+        profiles = list(
+            EditorProfile.objects.select_related("user")
+            .annotate(
+                videos_count=Count("videos", distinct=True),
+                followers_count=Count("follower_relationships", distinct=True),
+                following_count=Count("following_relationships", distinct=True),
+            )
+            .order_by("role", "user__username")
+        )
+        videos = PortfolioVideo.objects.all()
+        download_requests = VideoDownloadRequest.objects.all()
+        unread_notifications_total = OwnerNotification.objects.filter(is_read=False).count()
+        serialized_profiles = [serialize_admin_profile(profile) for profile in profiles]
+        profiles_needing_setup_total = sum(
+            1 for profile in serialized_profiles if not profile["setup"]["is_complete"]
+        )
+        public_profiles_total = sum(1 for profile in serialized_profiles if profile["is_public_profile"])
+
+        summary = {
+            "users_total": len(serialized_profiles),
+            "admins_total": sum(1 for profile in serialized_profiles if profile["role"] == AccountRole.ADMIN),
+            "editors_total": sum(1 for profile in serialized_profiles if profile["role"] == AccountRole.EDITOR),
+            "clients_total": sum(1 for profile in serialized_profiles if profile["role"] == AccountRole.CLIENT),
+            "public_profiles_total": public_profiles_total,
+            "private_profiles_total": max(0, len(serialized_profiles) - public_profiles_total),
+            "profiles_needing_setup_total": profiles_needing_setup_total,
+            "videos_total": videos.count(),
+            "uploaded_videos_total": videos.exclude(uploaded_file="").count(),
+            "pending_download_requests_total": download_requests.filter(
+                status=DownloadRequestStatus.PENDING
+            ).count(),
+            "approved_download_requests_total": download_requests.filter(
+                status=DownloadRequestStatus.APPROVED
+            ).count(),
+            "rejected_download_requests_total": download_requests.filter(
+                status=DownloadRequestStatus.REJECTED
+            ).count(),
+            "unread_notifications_total": unread_notifications_total,
+        }
+        recent_videos = [
+            {
+                "id": str(video.id),
+                "title": video.title,
+                "owner_username": video.profile.user.username,
+                "category": video.category,
+                "content_type": video.content_type,
+                "has_uploaded_file": video.has_uploaded_file,
+                "views": video.views,
+                "created_at": video.created_at,
+                "public_url": f"/{video.profile.user.username}/",
+            }
+            for video in PortfolioVideo.objects.select_related("profile", "profile__user")
+            .order_by("-created_at")[:8]
+        ]
+
+        return Response(
+            {
+                "summary": summary,
+                "profiles": serialized_profiles,
+                "recent_videos": recent_videos,
+            }
+        )
+
+
+class AdminProfileRoleUpdateAPIView(APIView):
+    permission_classes = (IsAuthenticatedAdmin,)
+    throttle_classes = (SecureOwnerReviewThrottle,)
+
+    @transaction.atomic
+    def post(self, request, username):
+        profile = get_object_or_404(
+            EditorProfile.objects.select_related("user"),
+            user__username__iexact=username,
+        )
+        target_role = str(request.data.get("role", "")).strip()
+        valid_roles = {
+            AccountRole.ADMIN,
+            AccountRole.EDITOR,
+            AccountRole.CLIENT,
+        }
+        if target_role not in valid_roles:
+            raise ValidationError({"role": "Choose a valid role."})
+
+        if profile.role == target_role:
+            return Response(
+                {
+                    "ok": True,
+                    "message": f"{profile.display_name} is already set to {profile.get_role_display()}.",
+                    "profile": serialize_admin_profile(profile),
+                    "current_user_can_access_admin": has_admin_role(request.user),
+                    "current_user_can_access_django_admin": bool(
+                        request.user.is_staff or request.user.is_superuser
+                    ),
+                    "current_user_role": getattr(
+                        getattr(request.user, "editor_profile", None),
+                        "role",
+                        None,
+                    ),
+                }
+            )
+
+        profile.role = target_role
+        profile.save(update_fields=["role", "updated_at"])
+        if profile.user_id == request.user.id and hasattr(request.user, "editor_profile"):
+            request.user.editor_profile.role = target_role
+
+        return Response(
+            {
+                "ok": True,
+                "message": f"{profile.display_name} is now set to {profile.get_role_display()}.",
+                "profile": serialize_admin_profile(profile),
+                "current_user_can_access_admin": has_admin_role(request.user),
+                "current_user_can_access_django_admin": bool(
+                    request.user.is_staff or request.user.is_superuser
+                ),
+                "current_user_role": getattr(
+                    getattr(request.user, "editor_profile", None),
+                    "role",
+                    None,
+                ),
+            }
+        )
 
 
 class SecureVideoUploadAPIView(APIView):

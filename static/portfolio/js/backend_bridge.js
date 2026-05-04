@@ -24,10 +24,20 @@
   const STAR_EMPTY = "\u2606";
   const MAX_VIDEO_UPLOAD_SIZE_BYTES = 95 * 1024 * 1024;
 
-  function syncAuthGlobals(user, role, canAccessAdmin) {
+  function syncAuthGlobals(
+    user,
+    role,
+    canAccessAdmin,
+    canAccessDjangoAdmin,
+    adminPanelUrl,
+    djangoAdminUrl
+  ) {
     window.currentUser = user || null;
     window.currentUserRole = role || null;
     window.currentUserCanAccessAdmin = Boolean(canAccessAdmin);
+    window.currentUserCanAccessDjangoAdmin = Boolean(canAccessDjangoAdmin);
+    window.adminPanelUrl = adminPanelUrl || "/admin/";
+    window.djangoAdminUrl = djangoAdminUrl || "/django-admin/";
     try {
       currentUser = window.currentUser;
     } catch (error) {
@@ -79,7 +89,10 @@
     syncAuthGlobals(
       payload.current_user || null,
       payload.current_user_role || null,
-      payload.current_user_can_access_admin || false
+      payload.current_user_can_access_admin || false,
+      payload.current_user_can_access_django_admin || false,
+      payload.admin_panel_url || "/admin/",
+      payload.django_admin_url || "/django-admin/"
     );
 
     if (window.currentUser) {
@@ -145,6 +158,68 @@
     }
 
     return fallback;
+  }
+
+  function formatDateTime(value) {
+    if (!value) {
+      return "Just now";
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Just now";
+    }
+    return parsed.toLocaleString([], {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  }
+
+  function setButtonProgress(button, isLoading, options = {}) {
+    if (!button) {
+      return;
+    }
+
+    if (isLoading) {
+      if (!button.dataset.elaOriginalHtml) {
+        button.dataset.elaOriginalHtml = button.innerHTML;
+      }
+      if (!button.dataset.elaOriginalWidth && button.offsetWidth) {
+        button.dataset.elaOriginalWidth = String(button.offsetWidth);
+        button.style.minWidth = `${button.offsetWidth}px`;
+      }
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.style.opacity = "0.72";
+      button.style.cursor = "wait";
+      if (options.loadingHtml) {
+        button.innerHTML = options.loadingHtml;
+      }
+      return;
+    }
+
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.style.opacity = "";
+    button.style.cursor = "";
+    if (button.dataset.elaOriginalWidth) {
+      button.style.minWidth = "";
+      delete button.dataset.elaOriginalWidth;
+    }
+    if (!options.skipRestoreHtml && button.dataset.elaOriginalHtml) {
+      button.innerHTML = button.dataset.elaOriginalHtml;
+    }
+    delete button.dataset.elaOriginalHtml;
+  }
+
+  async function withButtonProgress(button, options, action) {
+    setButtonProgress(button, true, options);
+    try {
+      return await action();
+    } finally {
+      if (button && button.isConnected) {
+        setButtonProgress(button, false, options);
+      }
+    }
   }
 
   async function postForm(url, data) {
@@ -278,6 +353,8 @@
     let target = "/";
     if (page === "discover") {
       target = "/discover/";
+    } else if (page === "admin") {
+      target = window.adminPanelUrl || "/admin/";
     } else if (page === "dashboard") {
       target = "/dashboard/";
     } else if (page === "profile" && data) {
@@ -298,7 +375,25 @@
   }
 
   function openAdminPanel() {
-    window.location.href = "/admin/";
+    if (!window.currentUser) {
+      window.navigate("admin");
+      window.openModal("loginModal");
+      return;
+    }
+    if (!window.currentUserCanAccessAdmin) {
+      window.navigate("admin");
+      window.showToast("Admin access is required to open this dashboard.", "error");
+      return;
+    }
+    window.navigate("admin");
+  }
+
+  function openDjangoAdmin() {
+    if (!window.currentUserCanAccessDjangoAdmin) {
+      window.showToast("Only staff-level accounts can open Django admin.", "error");
+      return;
+    }
+    window.location.href = window.djangoAdminUrl || "/django-admin/";
   }
 
   function currentViewerProfile() {
@@ -527,39 +622,51 @@
     return { editor, video };
   }
 
-  async function toggleVideoLike(username, videoId) {
+  async function toggleVideoLike(username, videoId, triggerButton) {
     if (!window.currentUser) {
       promptSignIn("Sign in to like videos.");
       return;
     }
 
     try {
-      const payload = await postForm(
-        `/api/profiles/${encodeURIComponent(username)}/videos/${encodeURIComponent(videoId)}/like/`,
-        {}
+      await withButtonProgress(
+        triggerButton,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i> <span>...</span>' },
+        async function () {
+          const payload = await postForm(
+            `/api/profiles/${encodeURIComponent(username)}/videos/${encodeURIComponent(videoId)}/like/`,
+            {}
+          );
+          replaceState(payload);
+          renderCurrentContexts();
+          window.showToast(payload.message, payload.liked ? "success" : "info");
+        }
       );
-      replaceState(payload);
-      renderCurrentContexts();
-      window.showToast(payload.message, payload.liked ? "success" : "info");
     } catch (error) {
       window.showToast(error.message, "error");
     }
   }
 
-  async function updateVideoRating(username, videoId, rating) {
+  async function updateVideoRating(username, videoId, rating, triggerButton) {
     if (!window.currentUser) {
       promptSignIn("Sign in to rate videos.");
       return;
     }
 
     try {
-      const payload = await postForm(
-        `/api/profiles/${encodeURIComponent(username)}/videos/${encodeURIComponent(videoId)}/rate/`,
-        { rating }
+      await withButtonProgress(
+        triggerButton,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i>' },
+        async function () {
+          const payload = await postForm(
+            `/api/profiles/${encodeURIComponent(username)}/videos/${encodeURIComponent(videoId)}/rate/`,
+            { rating }
+          );
+          replaceState(payload);
+          renderCurrentContexts();
+          window.showToast(payload.message, "success");
+        }
       );
-      replaceState(payload);
-      renderCurrentContexts();
-      window.showToast(payload.message, "success");
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -594,7 +701,7 @@
     button.addEventListener("click", function (event) {
       event.preventDefault();
       event.stopPropagation();
-      toggleVideoLike(username, video.id);
+      toggleVideoLike(username, video.id, button);
     });
     host.appendChild(button);
   }
@@ -636,7 +743,7 @@
       button.addEventListener("click", function (event) {
         event.preventDefault();
         event.stopPropagation();
-        updateVideoRating(username, video.id, rating);
+        updateVideoRating(username, video.id, rating, button);
       });
       row.appendChild(button);
     }
@@ -1106,7 +1213,7 @@
           window.navigate("profile", window.currentUser);
         });
         bindClick("desktopLogoutBtn", function () {
-          window.logout();
+          window.logout(this);
         });
       } else {
         desktopAuthActions.innerHTML =
@@ -1136,7 +1243,7 @@
         });
         bindClick("mobileLogoutBtn", function () {
           closeMobileMenuIfOpen();
-          window.logout();
+          window.logout(this);
         });
       } else {
         mobileAuthActions.innerHTML =
@@ -1178,6 +1285,10 @@
   }
 
   function renderCurrentContexts() {
+    if (window.currentPage === "admin" && typeof window.renderAdminPage === "function") {
+      window.renderAdminPage();
+      return;
+    }
     if (window.currentPage === "dashboard" && typeof window.renderDashboard === "function") {
       const activeTab = window.__elaActiveDashboardTab || "videos";
       window.renderDashboard();
@@ -1822,7 +1933,7 @@
       logoutBtn.className = "btn-secondary";
       logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Logout';
       logoutBtn.addEventListener("click", function () {
-        window.logout();
+        window.logout(logoutBtn);
       });
       actionHost.appendChild(logoutBtn);
     } else {
@@ -1838,13 +1949,23 @@
           return;
         }
         try {
-          const payload = await postForm(
-            `/api/follow/${encodeURIComponent(editor.username)}/toggle/`,
-            {}
+          await withButtonProgress(
+            followBtn,
+            {
+              loadingHtml: editor.is_following
+                ? '<i class="fas fa-spinner fa-spin"></i> Updating...'
+                : '<i class="fas fa-spinner fa-spin"></i> Following...',
+            },
+            async function () {
+              const payload = await postForm(
+                `/api/follow/${encodeURIComponent(editor.username)}/toggle/`,
+                {}
+              );
+              replaceState(payload);
+              renderCurrentContexts();
+              window.showToast(payload.message, "success");
+            }
           );
-          replaceState(payload);
-          renderCurrentContexts();
-          window.showToast(payload.message, "success");
         } catch (error) {
           window.showToast(error.message, "error");
         }
@@ -1891,6 +2012,623 @@
   };
 
   window.getEditor = editorByUsername;
+
+  function adminPageState() {
+    if (!window.__elaAdminPageState) {
+      window.__elaAdminPageState = {
+        loaded: false,
+        loading: false,
+        error: "",
+        overview: null,
+        requests: [],
+        notifications: [],
+        promise: null,
+      };
+    }
+    return window.__elaAdminPageState;
+  }
+
+  function adminActionStore() {
+    if (!window.__elaAdminActionStore) {
+      window.__elaAdminActionStore = {};
+    }
+    return window.__elaAdminActionStore;
+  }
+
+  function setAdminActionInProgress(key, value) {
+    const store = adminActionStore();
+    if (value) {
+      store[key] = value;
+    } else {
+      delete store[key];
+    }
+  }
+
+  function adminActionInProgress(key) {
+    return adminActionStore()[key];
+  }
+
+  function adminRequestDraftStore() {
+    if (!window.__elaAdminRequestDraftStore) {
+      window.__elaAdminRequestDraftStore = {};
+    }
+    return window.__elaAdminRequestDraftStore;
+  }
+
+  function setAdminRequestDraft(requestId, value) {
+    const store = adminRequestDraftStore();
+    if (!value) {
+      delete store[requestId];
+      return;
+    }
+    store[requestId] = value;
+  }
+
+  function adminRequestDraft(requestId, fallback = "") {
+    return adminRequestDraftStore()[requestId] ?? fallback ?? "";
+  }
+
+  function adminStatusBadge(label, background, color) {
+    return (
+      `<span style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;` +
+      `background:${background};color:${color};font-size:0.74rem;font-weight:700;">${label}</span>`
+    );
+  }
+
+  function requestStatusBadge(status) {
+    if (status === "approved") {
+      return adminStatusBadge("Approved", "rgba(34,197,94,0.14)", "#22c55e");
+    }
+    if (status === "rejected") {
+      return adminStatusBadge("Rejected", "rgba(239,68,68,0.16)", "#ef4444");
+    }
+    return adminStatusBadge("Pending", "rgba(245,158,11,0.16)", "#f59e0b");
+  }
+
+  function profileRoleBadge(profile) {
+    if (profile.role === "admin") {
+      return adminStatusBadge(profile.role_label || "Admin", "rgba(59,130,246,0.14)", "#3b82f6");
+    }
+    if (profile.role === "editor") {
+      return adminStatusBadge(profile.role_label || "Editor", "rgba(16,185,129,0.14)", "#10b981");
+    }
+    return adminStatusBadge(profile.role_label || "Client", "rgba(249,115,22,0.16)", "#f97316");
+  }
+
+  function adminOverviewSummaryCards(summary) {
+    if (!summary) {
+      return Array.from({ length: 8 })
+        .map(
+          () =>
+            `<div class="stat-card"><div style="height:12px;background:rgba(255,255,255,0.08);border-radius:999px;margin-bottom:10px;"></div>` +
+            `<div style="height:24px;background:rgba(255,255,255,0.12);border-radius:12px;width:60%;"></div></div>`
+        )
+        .join("");
+    }
+
+    const items = [
+      ["Accounts", summary.users_total],
+      ["Admins", summary.admins_total],
+      ["Editors", summary.editors_total],
+      ["Clients", summary.clients_total],
+      ["Public Profiles", summary.public_profiles_total],
+      ["Videos", summary.videos_total],
+      ["Pending Requests", summary.pending_download_requests_total],
+      ["Unread Alerts", summary.unread_notifications_total],
+    ];
+    return items
+      .map(
+        ([label, value]) =>
+          `<div class="stat-card">` +
+          `<div style="color:var(--text-muted);font-size:0.82rem;margin-bottom:8px;">${escapeHtml(label)}</div>` +
+          `<div style="font-family:'Space Grotesk',sans-serif;font-size:2rem;font-weight:700;">${window.formatNumber(
+            Number(value || 0)
+          )}</div>` +
+          `</div>`
+      )
+      .join("");
+  }
+
+  function renderAdminGate(messageHtml, dataVisible) {
+    const gate = document.getElementById("adminAccessGate");
+    const shell = document.getElementById("adminDataShell");
+    if (gate) {
+      gate.style.display = messageHtml ? "block" : "none";
+      gate.innerHTML = messageHtml || "";
+    }
+    if (shell) {
+      shell.style.display = dataVisible ? "flex" : "none";
+    }
+  }
+
+  function sortAdminRequests(requests) {
+    const priority = { pending: 0, approved: 1, rejected: 2 };
+    return [...(requests || [])].sort((a, b) => {
+      const left = priority[a.status] ?? 9;
+      const right = priority[b.status] ?? 9;
+      return left - right || new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime();
+    });
+  }
+
+  async function loadAdminDashboard(force = false) {
+    const state = adminPageState();
+    if (!window.currentUserCanAccessAdmin) {
+      state.loaded = false;
+      state.loading = false;
+      state.error = "";
+      state.overview = null;
+      state.requests = [];
+      state.notifications = [];
+      state.promise = null;
+      return state;
+    }
+    if (state.loading && state.promise && !force) {
+      return state.promise;
+    }
+
+    state.loading = true;
+    state.error = "";
+    const request = Promise.all([
+      getJson("/api/secure/admin/overview/"),
+      getJson("/api/secure/download-requests/"),
+      getJson("/api/secure/notifications/?unread=1"),
+    ])
+      .then(([overview, requests, notifications]) => {
+        state.overview = overview || null;
+        state.requests = sortAdminRequests(requests || []);
+        state.notifications = Array.isArray(notifications) ? notifications : [];
+        state.loaded = true;
+        return state;
+      })
+      .catch((error) => {
+        state.error = error.message || "Unable to load admin data right now.";
+        throw error;
+      })
+      .finally(() => {
+        state.loading = false;
+        state.promise = null;
+        if (window.currentPage === "admin") {
+          window.renderAdminPage();
+        }
+      });
+
+    state.promise = request;
+    if (window.currentPage === "admin") {
+      window.renderAdminPage();
+    }
+    return request;
+  }
+
+  function bindAdminRequestActions() {
+    Array.from(document.querySelectorAll("[data-admin-request-message]")).forEach((field) => {
+      if (field.dataset.elaBound === "true") {
+        return;
+      }
+      field.dataset.elaBound = "true";
+      field.addEventListener("input", function () {
+        setAdminRequestDraft(this.dataset.adminRequestMessage, this.value);
+      });
+    });
+
+    Array.from(document.querySelectorAll("[data-admin-request-action]")).forEach((button) => {
+      if (button.dataset.elaBound === "true") {
+        return;
+      }
+      button.dataset.elaBound = "true";
+      button.addEventListener("click", async function () {
+        const requestId = this.dataset.adminRequestAction;
+        const status = this.dataset.adminRequestStatus;
+        const actionKey = `request:${requestId}`;
+        if (adminActionInProgress(actionKey)) {
+          return;
+        }
+
+        setAdminActionInProgress(actionKey, status);
+        window.renderAdminPage();
+        try {
+          const payload = await postJson(`/api/secure/download-requests/${requestId}/review/`, {
+            status,
+            owner_response_message: adminRequestDraft(requestId, ""),
+          });
+          setAdminRequestDraft(requestId, "");
+          window.showToast(payload.status === "approved" ? "Download request approved." : "Download request rejected.", "success");
+          await loadAdminDashboard(true);
+        } catch (error) {
+          window.showToast(error.message, "error");
+        } finally {
+          setAdminActionInProgress(actionKey, "");
+          if (window.currentPage === "admin") {
+            window.renderAdminPage();
+          }
+        }
+      });
+    });
+  }
+
+  function bindAdminNotificationActions() {
+    Array.from(document.querySelectorAll("[data-admin-notification-read]")).forEach((button) => {
+      if (button.dataset.elaBound === "true") {
+        return;
+      }
+      button.dataset.elaBound = "true";
+      button.addEventListener("click", async function () {
+        const notificationId = this.dataset.adminNotificationRead;
+        const actionKey = `notification:${notificationId}`;
+        if (adminActionInProgress(actionKey)) {
+          return;
+        }
+
+        setAdminActionInProgress(actionKey, true);
+        window.renderAdminPage();
+        try {
+          await postForm(`/api/secure/notifications/${notificationId}/read/`, {});
+          window.showToast("Notification marked as read.", "success");
+          await loadAdminDashboard(true);
+        } catch (error) {
+          window.showToast(error.message, "error");
+        } finally {
+          setAdminActionInProgress(actionKey, "");
+          if (window.currentPage === "admin") {
+            window.renderAdminPage();
+          }
+        }
+      });
+    });
+  }
+
+  function bindAdminRoleActions() {
+    Array.from(document.querySelectorAll("[data-admin-role-action]")).forEach((button) => {
+      if (button.dataset.elaBound === "true") {
+        return;
+      }
+      button.dataset.elaBound = "true";
+      button.addEventListener("click", async function () {
+        const username = this.dataset.adminUsername;
+        const role = this.dataset.adminRoleAction;
+        const actionKey = `profile:${username}`;
+        if (adminActionInProgress(actionKey)) {
+          return;
+        }
+
+        setAdminActionInProgress(actionKey, role);
+        window.renderAdminPage();
+        try {
+          const payload = await postJson(
+            `/api/secure/admin/profiles/${encodeURIComponent(username)}/role/`,
+            { role }
+          );
+          const bootstrapPayload = await getJson("/api/bootstrap/");
+          replaceState(bootstrapPayload);
+          window.showToast(payload.message || "Role updated.", "success");
+          await loadAdminDashboard(true);
+        } catch (error) {
+          window.showToast(error.message, "error");
+        } finally {
+          setAdminActionInProgress(actionKey, "");
+          if (window.currentPage === "admin") {
+            window.renderAdminPage();
+          }
+        }
+      });
+    });
+  }
+
+  window.refreshAdminPage = async function (triggerButton) {
+    const button = triggerButton || document.getElementById("adminRefreshAction");
+    try {
+      await withButtonProgress(
+        button,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i> Refreshing...' },
+        async function () {
+          await loadAdminDashboard(true);
+        }
+      );
+      window.showToast("Admin data refreshed.", "success");
+    } catch (error) {
+      window.showToast(error.message || "Unable to refresh admin data.", "error");
+    }
+  };
+
+  window.openDjangoAdmin = openDjangoAdmin;
+
+  window.renderAdminPage = function () {
+    const gate = document.getElementById("adminAccessGate");
+    const summaryGrid = document.getElementById("adminSummaryGrid");
+    const requestsList = document.getElementById("adminRequestsList");
+    const notificationsList = document.getElementById("adminNotificationsList");
+    const profilesList = document.getElementById("adminProfilesList");
+    const recentVideosList = document.getElementById("adminRecentVideosList");
+    const djangoButton = document.getElementById("adminDjangoAction");
+    if (!gate || !summaryGrid || !requestsList || !notificationsList || !profilesList || !recentVideosList) {
+      return;
+    }
+
+    if (djangoButton) {
+      djangoButton.style.display = window.currentUserCanAccessDjangoAdmin ? "inline-flex" : "none";
+    }
+
+    if (!window.currentUser) {
+      renderAdminGate(
+        `<div style="display:flex;flex-direction:column;gap:14px;">` +
+          `<div style="font-weight:700;font-size:1.05rem;">Sign in to continue</div>` +
+          `<p style="color:var(--text-secondary);line-height:1.6;">The admin dashboard is only available to approved admin accounts.</p>` +
+          `<div style="display:flex;gap:12px;flex-wrap:wrap;">` +
+          `<button type="button" class="btn-primary btn-sm" id="adminGateLoginBtn"><i class="fas fa-sign-in-alt"></i> Sign In</button>` +
+          `<button type="button" class="btn-secondary btn-sm" id="adminGateHomeBtn"><i class="fas fa-house"></i> Back Home</button>` +
+          `</div></div>`,
+        false
+      );
+      document.getElementById("adminGateLoginBtn")?.addEventListener("click", function () {
+        window.openModal("loginModal");
+      });
+      document.getElementById("adminGateHomeBtn")?.addEventListener("click", function () {
+        window.navigate("home");
+      });
+      return;
+    }
+
+    if (!window.currentUserCanAccessAdmin) {
+      renderAdminGate(
+        `<div style="display:flex;flex-direction:column;gap:14px;">` +
+          `<div style="font-weight:700;font-size:1.05rem;">Admin access required</div>` +
+          `<p style="color:var(--text-secondary);line-height:1.6;">Your account is signed in, but it does not currently have admin dashboard access.</p>` +
+          `<div style="display:flex;gap:12px;flex-wrap:wrap;">` +
+          `<button type="button" class="btn-secondary btn-sm" id="adminGateProfileBtn"><i class="fas fa-id-badge"></i> My Profile</button>` +
+          `<button type="button" class="btn-primary btn-sm" id="adminGateDiscoverBtn"><i class="fas fa-compass"></i> Discover</button>` +
+          `</div></div>`,
+        false
+      );
+      document.getElementById("adminGateProfileBtn")?.addEventListener("click", function () {
+        window.navigate("profile", window.currentUser);
+      });
+      document.getElementById("adminGateDiscoverBtn")?.addEventListener("click", function () {
+        window.navigate("discover");
+      });
+      return;
+    }
+
+    renderAdminGate("", true);
+    const state = adminPageState();
+    summaryGrid.innerHTML = adminOverviewSummaryCards(state.overview?.summary || null);
+
+    if (!state.loaded && !state.loading) {
+      void loadAdminDashboard();
+    }
+
+    if (state.loading && !state.loaded) {
+      requestsList.innerHTML =
+        '<div style="color:var(--text-secondary);">Loading request queue...</div>';
+      notificationsList.innerHTML =
+        '<div style="color:var(--text-secondary);">Loading notifications...</div>';
+      profilesList.innerHTML =
+        '<div style="color:var(--text-secondary);">Loading team directory...</div>';
+      recentVideosList.innerHTML =
+        '<div style="color:var(--text-secondary);">Loading recent uploads...</div>';
+      return;
+    }
+
+    if (state.error && !state.loaded) {
+      requestsList.innerHTML = `<div style="color:var(--accent);">${escapeHtml(state.error)}</div>`;
+      notificationsList.innerHTML = `<div style="color:var(--accent);">${escapeHtml(state.error)}</div>`;
+      profilesList.innerHTML = `<div style="color:var(--accent);">${escapeHtml(state.error)}</div>`;
+      recentVideosList.innerHTML = `<div style="color:var(--accent);">${escapeHtml(state.error)}</div>`;
+      return;
+    }
+
+    const requests = sortAdminRequests(state.requests || []);
+    if (!requests.length) {
+      requestsList.innerHTML =
+        '<div style="color:var(--text-secondary);">No download requests are waiting right now.</div>';
+    } else {
+      requestsList.innerHTML = requests
+        .map((request) => {
+          const actionKey = `request:${request.id}`;
+          const busyStatus = adminActionInProgress(actionKey);
+          const messageValue = escapeHtml(
+            adminRequestDraft(request.id, request.owner_response_message || "")
+          );
+          return (
+            `<div style="border:1px solid var(--border);border-radius:18px;padding:16px;background:rgba(255,255,255,0.02);">` +
+            `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;">` +
+            `<div>` +
+            `<div style="font-weight:700;font-size:0.96rem;">${escapeHtml(
+              request.video_title || request.video_title_snapshot || "Untitled video"
+            )}</div>` +
+            `<div style="color:var(--text-secondary);font-size:0.84rem;line-height:1.6;margin-top:4px;">` +
+            `Requester: <strong style="color:var(--text-primary);">@${escapeHtml(
+              request.requester_username || ""
+            )}</strong> &middot; Owner: <strong style="color:var(--text-primary);">@${escapeHtml(
+              request.owner_username || ""
+            )}</strong><br>` +
+            `${formatDateTime(request.requested_at)}` +
+            `</div>` +
+            `</div>` +
+            requestStatusBadge(request.status) +
+            `</div>` +
+            `<div style="margin-top:12px;color:var(--text-secondary);font-size:0.85rem;line-height:1.6;">${escapeHtml(
+              request.request_message || "No requester message was included."
+            )}</div>` +
+            `<textarea class="input-field" data-admin-request-message="${request.id}" placeholder="Optional response for the requester" style="margin-top:12px;min-height:84px;">${messageValue}</textarea>` +
+            `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">` +
+            `<button type="button" class="btn-primary btn-sm" data-admin-request-action="${request.id}" data-admin-request-status="approved" ${
+              busyStatus ? "disabled" : ""
+            }>` +
+            `${
+              busyStatus === "approved"
+                ? '<i class="fas fa-spinner fa-spin"></i> Approving...'
+                : '<i class="fas fa-check"></i> Approve'
+            }</button>` +
+            `<button type="button" class="btn-secondary btn-sm" data-admin-request-action="${request.id}" data-admin-request-status="rejected" ${
+              busyStatus ? "disabled" : ""
+            }>` +
+            `${
+              busyStatus === "rejected"
+                ? '<i class="fas fa-spinner fa-spin"></i> Rejecting...'
+                : '<i class="fas fa-ban"></i> Reject'
+            }</button>` +
+            `</div>` +
+            `</div>`
+          );
+        })
+        .join("");
+    }
+
+    const notifications = state.notifications || [];
+    if (!notifications.length) {
+      notificationsList.innerHTML =
+        '<div style="color:var(--text-secondary);">No unread admin notifications.</div>';
+    } else {
+      notificationsList.innerHTML = notifications
+        .map((notification) => {
+          const actionKey = `notification:${notification.id}`;
+          const busy = adminActionInProgress(actionKey);
+          return (
+            `<div style="border:1px solid var(--border);border-radius:18px;padding:16px;background:rgba(255,255,255,0.02);">` +
+            `<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">` +
+            `<div>` +
+            `<div style="font-weight:700;font-size:0.95rem;">${escapeHtml(notification.title || "Notification")}</div>` +
+            `<div style="color:var(--text-secondary);font-size:0.82rem;margin-top:4px;">${formatDateTime(
+              notification.created_at
+            )}</div>` +
+            `</div>` +
+            `</div>` +
+            `<div style="color:var(--text-secondary);font-size:0.85rem;line-height:1.6;margin-top:10px;">${escapeHtml(
+              notification.message || ""
+            )}</div>` +
+            `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">` +
+            `<button type="button" class="btn-secondary btn-sm" data-admin-notification-read="${notification.id}" ${
+              busy ? "disabled" : ""
+            }>` +
+            `${
+              busy
+                ? '<i class="fas fa-spinner fa-spin"></i> Marking...'
+                : '<i class="fas fa-check"></i> Mark Read'
+            }</button>` +
+            `</div>` +
+            `</div>`
+          );
+        })
+        .join("");
+    }
+
+    const profiles = state.overview?.profiles || [];
+    if (!profiles.length) {
+      profilesList.innerHTML =
+        '<div style="color:var(--text-secondary);">No profiles are available yet.</div>';
+    } else {
+      profilesList.innerHTML = profiles
+        .map((profile) => {
+          const actionKey = `profile:${profile.username}`;
+          const busyRole = adminActionInProgress(actionKey);
+          const setupItems = [];
+          if (profile.setup?.needs_avatar) {
+            setupItems.push("avatar");
+          }
+          if (profile.setup?.needs_contact) {
+            setupItems.push("contact");
+          }
+          if (profile.setup?.needs_video) {
+            setupItems.push("video");
+          }
+          const setupLabel = setupItems.length ? `Needs ${setupItems.join(", ")}` : "Complete";
+
+          return (
+            `<div style="border:1px solid var(--border);border-radius:18px;padding:16px;background:rgba(255,255,255,0.02);">` +
+            `<div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;">` +
+            `<div style="min-width:240px;flex:1;">` +
+            `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">` +
+            `<div style="font-weight:700;font-size:1rem;">${escapeHtml(profile.display_name || profile.username)}</div>` +
+            profileRoleBadge(profile) +
+            (profile.is_public_profile
+              ? adminStatusBadge("Public", "rgba(34,197,94,0.12)", "#22c55e")
+              : adminStatusBadge("Private", "rgba(148,163,184,0.16)", "#94a3b8")) +
+            `</div>` +
+            `<div style="color:var(--text-secondary);font-size:0.84rem;line-height:1.7;margin-top:6px;">` +
+            `@${escapeHtml(profile.username)} &middot; ${window.formatNumber(
+              profile.videos_count || 0
+            )} videos &middot; ${window.formatNumber(profile.followers_count || 0)} followers<br>` +
+            `${window.formatNumber(profile.contact_methods_count || 0)} contact methods &middot; ${escapeHtml(
+              setupLabel
+            )} &middot; Updated ${formatDateTime(profile.updated_at)}` +
+            `</div>` +
+            `</div>` +
+            `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">` +
+            `<button type="button" class="btn-secondary btn-sm" data-admin-open-profile="${escapeHtml(
+              profile.username
+            )}"><i class="fas fa-eye"></i> Open</button>` +
+            `<button type="button" class="btn-secondary btn-sm" data-admin-role-action="admin" data-admin-username="${escapeHtml(
+              profile.username
+            )}" ${busyRole || profile.role === "admin" ? "disabled" : ""}>${
+              busyRole === "admin"
+                ? '<i class="fas fa-spinner fa-spin"></i> Admin...'
+                : "Admin"
+            }</button>` +
+            `<button type="button" class="btn-secondary btn-sm" data-admin-role-action="editor" data-admin-username="${escapeHtml(
+              profile.username
+            )}" ${busyRole || profile.role === "editor" ? "disabled" : ""}>${
+              busyRole === "editor"
+                ? '<i class="fas fa-spinner fa-spin"></i> Editor...'
+                : "Editor"
+            }</button>` +
+            `<button type="button" class="btn-secondary btn-sm" data-admin-role-action="client" data-admin-username="${escapeHtml(
+              profile.username
+            )}" ${busyRole || profile.role === "client" ? "disabled" : ""}>${
+              busyRole === "client"
+                ? '<i class="fas fa-spinner fa-spin"></i> Client...'
+                : "Client"
+            }</button>` +
+            `</div>` +
+            `</div>` +
+            `</div>`
+          );
+        })
+        .join("");
+    }
+
+    const recentVideos = state.overview?.recent_videos || [];
+    if (!recentVideos.length) {
+      recentVideosList.innerHTML =
+        '<div style="color:var(--text-secondary);">No video uploads have been recorded yet.</div>';
+    } else {
+      recentVideosList.innerHTML = recentVideos
+        .map(
+          (video) =>
+            `<div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;border:1px solid var(--border);border-radius:18px;padding:14px 16px;background:rgba(255,255,255,0.02);">` +
+            `<div style="min-width:240px;flex:1;">` +
+            `<div style="font-weight:700;font-size:0.95rem;">${escapeHtml(video.title || "Untitled video")}</div>` +
+            `<div style="color:var(--text-secondary);font-size:0.84rem;line-height:1.7;margin-top:6px;">` +
+            `@${escapeHtml(video.owner_username || "")} &middot; ${escapeHtml(
+              video.category || ""
+            )} &middot; ${video.content_type === "short" ? "Short" : "Long"}<br>` +
+            `${window.formatNumber(video.views || 0)} views &middot; ${video.has_uploaded_file ? "Uploaded file" : "Link only"} &middot; ${formatDateTime(
+              video.created_at
+            )}` +
+            `</div>` +
+            `</div>` +
+            `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">` +
+            `<button type="button" class="btn-secondary btn-sm" data-admin-open-profile="${escapeHtml(
+              video.owner_username || ""
+            )}"><i class="fas fa-user"></i> Owner</button>` +
+            `</div>` +
+            `</div>`
+        )
+        .join("");
+    }
+
+    Array.from(document.querySelectorAll("[data-admin-open-profile]")).forEach((button) => {
+      if (button.dataset.elaBound === "true") {
+        return;
+      }
+      button.dataset.elaBound = "true";
+      button.addEventListener("click", function () {
+        window.navigate("profile", this.dataset.adminOpenProfile);
+      });
+    });
+
+    bindAdminRequestActions();
+    bindAdminNotificationActions();
+    bindAdminRoleActions();
+  };
 
   window.updateEditor = function (username, updates) {
     const editors = window.__elaEditors || [];
@@ -1974,89 +2712,116 @@
   };
 
   window.handleLogin = async function () {
+    const button = document.getElementById("loginSubmitAction");
     try {
-      const payload = await postForm("/auth/login/", {
-        username: document.getElementById("loginUsername").value.trim(),
-        password: document.getElementById("loginPassword").value,
-      });
+      await withButtonProgress(
+        button,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i> Signing In...' },
+        async function () {
+          const payload = await postForm("/auth/login/", {
+            username: document.getElementById("loginUsername").value.trim(),
+            password: document.getElementById("loginPassword").value,
+          });
 
-      replaceState(payload);
-      document.getElementById("loginUsername").value = "";
-      document.getElementById("loginPassword").value = "";
-      window.closeModal("loginModal");
-      window.showToast(payload.message, "success");
-      window.navigate("profile", window.currentUser);
+          replaceState(payload);
+          document.getElementById("loginUsername").value = "";
+          document.getElementById("loginPassword").value = "";
+          window.closeModal("loginModal");
+          window.showToast(payload.message, "success");
+          window.navigate("profile", window.currentUser);
+        }
+      );
     } catch (error) {
       window.showToast(error.message, "error");
     }
   };
 
-  window.logout = async function () {
+  window.logout = async function (triggerButton) {
     try {
-      const payload = await postForm("/auth/logout/", {});
-      replaceState(payload);
-      window.showToast(payload.message, "info");
-      window.navigate("home");
+      await withButtonProgress(
+        triggerButton,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i> Logging Out...' },
+        async function () {
+          const payload = await postForm("/auth/logout/", {});
+          replaceState(payload);
+          window.showToast(payload.message, "info");
+          window.navigate("home");
+        }
+      );
     } catch (error) {
       window.showToast(error.message, "error");
     }
   };
 
   window.saveProfile = async function () {
+    const button = document.getElementById("profileSaveAction");
     try {
-      const oldUsername = window.currentUser;
-      const formData = new FormData();
-      formData.append("username", document.getElementById("editUsername").value.trim());
-      formData.append("cname", document.getElementById("editCname")?.value.trim() || "");
-      formData.append("clients_served", document.getElementById("editClientsServed")?.value || "0");
-      formData.append(
-        "completed_projects",
-        document.getElementById("editCompletedProjects")?.value || "0"
+      await withButtonProgress(
+        button,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i> Saving...' },
+        async function () {
+          const oldUsername = window.currentUser;
+          const formData = new FormData();
+          formData.append("username", document.getElementById("editUsername").value.trim());
+          formData.append("cname", document.getElementById("editCname")?.value.trim() || "");
+          formData.append("clients_served", document.getElementById("editClientsServed")?.value || "0");
+          formData.append(
+            "completed_projects",
+            document.getElementById("editCompletedProjects")?.value || "0"
+          );
+          formData.append("bio", document.getElementById("editBio").value.trim());
+          formData.append("avatar_url", document.getElementById("editAvatar").value.trim());
+          const avatarInput = document.getElementById("editAvatarFile");
+          if (avatarInput && avatarInput.files && avatarInput.files[0]) {
+            formData.append("avatar_file", avatarInput.files[0]);
+          }
+
+          const payload = await postMultipartForm("/api/profile/", formData);
+
+          replaceState(payload);
+          if (
+            oldUsername &&
+            window.currentProfileUser === oldUsername &&
+            window.currentUser === payload.updated_username
+          ) {
+            window.currentProfileUser = payload.updated_username;
+            syncHistory("profile", payload.updated_username);
+          }
+          if (document.getElementById("editAvatarFile")) {
+            document.getElementById("editAvatarFile").value = "";
+          }
+          renderCurrentContexts();
+          window.showToast(payload.message, "success");
+          window.navigate("profile", payload.updated_username || window.currentUser);
+        }
       );
-      formData.append("bio", document.getElementById("editBio").value.trim());
-      formData.append("avatar_url", document.getElementById("editAvatar").value.trim());
-      const avatarInput = document.getElementById("editAvatarFile");
-      if (avatarInput && avatarInput.files && avatarInput.files[0]) {
-        formData.append("avatar_file", avatarInput.files[0]);
-      }
-
-      const payload = await postMultipartForm("/api/profile/", formData);
-
-      replaceState(payload);
-      if (
-        oldUsername &&
-        window.currentProfileUser === oldUsername &&
-        window.currentUser === payload.updated_username
-      ) {
-        window.currentProfileUser = payload.updated_username;
-        syncHistory("profile", payload.updated_username);
-      }
-      if (document.getElementById("editAvatarFile")) {
-        document.getElementById("editAvatarFile").value = "";
-      }
-      renderCurrentContexts();
-      window.showToast(payload.message, "success");
-      window.navigate("profile", payload.updated_username || window.currentUser);
     } catch (error) {
       window.showToast(error.message, "error");
     }
   };
 
   window.saveContacts = async function () {
+    const button = document.getElementById("contactsSaveAction");
     try {
-      const payload = await postForm("/api/contacts/", {
-        email: document.getElementById("contactEmail").value.trim(),
-        telegram: document.getElementById("contactTelegram").value.trim(),
-        telegram_chat_id: document.getElementById("contactTelegramChatId")?.value.trim() || "",
-        whatsapp: document.getElementById("contactWhatsapp").value.trim(),
-        phone: document.getElementById("contactPhone").value.trim(),
-        other_contacts_json: JSON.stringify(collectOtherContacts()),
-      });
+      await withButtonProgress(
+        button,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i> Saving...' },
+        async function () {
+          const payload = await postForm("/api/contacts/", {
+            email: document.getElementById("contactEmail").value.trim(),
+            telegram: document.getElementById("contactTelegram").value.trim(),
+            telegram_chat_id: document.getElementById("contactTelegramChatId")?.value.trim() || "",
+            whatsapp: document.getElementById("contactWhatsapp").value.trim(),
+            phone: document.getElementById("contactPhone").value.trim(),
+            other_contacts_json: JSON.stringify(collectOtherContacts()),
+          });
 
-      replaceState(payload);
-      renderCurrentContexts();
-      window.showToast(payload.message, "success");
-      window.navigate("profile", payload.updated_username || window.currentUser);
+          replaceState(payload);
+          renderCurrentContexts();
+          window.showToast(payload.message, "success");
+          window.navigate("profile", payload.updated_username || window.currentUser);
+        }
+      );
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -2129,26 +2894,38 @@
     }
   };
 
-  window.deleteVideo = async function (videoId) {
+  window.deleteVideo = async function (videoId, triggerButton) {
     try {
-      const payload = await postForm(`/api/videos/${encodeURIComponent(videoId)}/delete/`, {});
-      replaceState(payload);
-      renderCurrentContexts();
-      window.showToast(payload.message, "info");
+      await withButtonProgress(
+        triggerButton,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i>' },
+        async function () {
+          const payload = await postForm(`/api/videos/${encodeURIComponent(videoId)}/delete/`, {});
+          replaceState(payload);
+          renderCurrentContexts();
+          window.showToast(payload.message, "info");
+        }
+      );
     } catch (error) {
       window.showToast(error.message, "error");
     }
   };
 
-  window.moveVideo = async function (videoId, index) {
+  window.moveVideo = async function (videoId, index, triggerButton) {
     const direction = index > 0 ? "up" : "down";
     try {
-      const payload = await postForm(`/api/videos/${encodeURIComponent(videoId)}/move/`, {
-        direction,
-      });
-      replaceState(payload);
-      renderCurrentContexts();
-      window.showToast(payload.message, "success");
+      await withButtonProgress(
+        triggerButton,
+        { loadingHtml: '<i class="fas fa-spinner fa-spin"></i>' },
+        async function () {
+          const payload = await postForm(`/api/videos/${encodeURIComponent(videoId)}/move/`, {
+            direction,
+          });
+          replaceState(payload);
+          renderCurrentContexts();
+          window.showToast(payload.message, "success");
+        }
+      );
     } catch (error) {
       window.showToast(error.message, "error");
     }
@@ -2295,8 +3072,14 @@
       button.addEventListener("click", async function () {
         const method = methods[Number(this.dataset.copyIndex)];
         try {
-          await copyTextToClipboard(method.value);
-          window.showToast(`${method.label} copied`, "success");
+          await withButtonProgress(
+            button,
+            { loadingHtml: '<i class="fas fa-spinner fa-spin"></i>' },
+            async function () {
+              await copyTextToClipboard(method.value);
+              window.showToast(`${method.label} copied`, "success");
+            }
+          );
         } catch (error) {
           window.showToast("Unable to copy that contact value.", "error");
         }
@@ -2603,6 +3386,11 @@
 
       if (path === "discover") {
         originalNavigate("discover");
+        return;
+      }
+
+      if (path === "admin") {
+        originalNavigate("admin");
         return;
       }
 

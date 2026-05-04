@@ -165,6 +165,18 @@ def visible_profiles(request):
     return [profile for profile in profile_queryset() if visible_profile(profile, request)]
 
 
+def can_access_admin_dashboard(request, current_profile=None):
+    profile = current_profile if current_profile is not None else viewer_profile(request)
+    return bool(
+        request.user.is_authenticated
+        and (request.user.is_staff or (profile and profile.is_admin))
+    )
+
+
+def can_access_django_admin(request):
+    return bool(request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser))
+
+
 def normalize_public_username(username):
     if not isinstance(username, str):
         return None
@@ -437,10 +449,13 @@ def build_bootstrap_payload(request):
     payload = {
         "current_user": request.user.username if request.user.is_authenticated else None,
         "current_user_role": current_profile.role if current_profile else None,
-        "current_user_can_access_admin": bool(
-            request.user.is_authenticated
-            and (request.user.is_staff or (current_profile and current_profile.is_admin))
+        "current_user_can_access_admin": can_access_admin_dashboard(
+            request,
+            current_profile=current_profile,
         ),
+        "current_user_can_access_django_admin": can_access_django_admin(request),
+        "admin_panel_url": reverse("portfolio:admin-dashboard"),
+        "django_admin_url": reverse("admin:index"),
         "editors": [],
     }
     for profile in visible_profiles(request):
@@ -492,6 +507,7 @@ def build_seo_injection(request, requested_profile=None):
             or f"View {requested_profile.display_name}'s portfolio on Ela-sam Portfolio Show."
         )
         canonical = request.build_absolute_uri(f"/{requested_profile.user.username}/")
+        robots_value = "index,follow"
         structured_data = {
             "@context": "https://schema.org",
             "@type": "Person" if requested_profile.is_editor else "ProfilePage",
@@ -501,10 +517,35 @@ def build_seo_injection(request, requested_profile=None):
             "url": canonical,
             "image": request.build_absolute_uri(profile_avatar_src(requested_profile)),
         }
+    elif request.path == "/admin/":
+        title = "Admin Dashboard | Ela-sam Portfolio Show"
+        description = "Review platform activity, manage account roles, and process access requests."
+        canonical = request.build_absolute_uri("/admin/")
+        robots_value = "noindex,nofollow"
+        structured_data = {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": "Admin Dashboard",
+            "description": description,
+            "url": canonical,
+        }
+    elif request.path == "/dashboard/":
+        title = "Dashboard | Ela-sam Portfolio Show"
+        description = "Manage your portfolio, profile, and contact methods on Ela-sam Portfolio Show."
+        canonical = request.build_absolute_uri("/dashboard/")
+        robots_value = "noindex,nofollow"
+        structured_data = {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": "Dashboard",
+            "description": description,
+            "url": canonical,
+        }
     elif request.path == "/discover/":
         title = "Discover Editors | Ela-sam Portfolio Show"
         description = "Search and discover editors, portfolios, and contact methods on Ela-sam Portfolio Show."
         canonical = request.build_absolute_uri("/discover/")
+        robots_value = "index,follow"
         structured_data = {
             "@context": "https://schema.org",
             "@type": "CollectionPage",
@@ -516,6 +557,7 @@ def build_seo_injection(request, requested_profile=None):
         title = "Ela-sam Portfolio Show"
         description = "The professional platform where video editors and creative clients connect."
         canonical = request.build_absolute_uri("/")
+        robots_value = "index,follow"
         structured_data = {
             "@context": "https://schema.org",
             "@type": "WebSite",
@@ -536,7 +578,7 @@ def build_seo_injection(request, requested_profile=None):
     return (
         f"<title>{escaped_title}</title>\n"
         f'<meta name="description" content="{escaped_description}">\n'
-        '<meta name="robots" content="index,follow">\n'
+        f'<meta name="robots" content="{robots_value}">\n'
         f'<link rel="canonical" href="{escaped_canonical}">\n'
         f'<meta property="og:title" content="{escaped_title}">\n'
         f'<meta property="og:description" content="{escaped_description}">\n'

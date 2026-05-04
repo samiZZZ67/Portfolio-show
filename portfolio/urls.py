@@ -12,6 +12,7 @@ sitemaps = {
 
 urlpatterns = [
     path("", views.frontend_shell, name="home"),
+    path("admin/", views.frontend_shell, name="admin-dashboard"),
     path("discover/", views.frontend_shell, name="discover"),
     path("dashboard/", views.frontend_shell, name="dashboard"),
     path("about/", views.about_view, name="about"),
