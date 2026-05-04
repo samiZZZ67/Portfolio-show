@@ -636,6 +636,11 @@ def frontend_shell(request, username=None):
     return HttpResponse(render_frontend_html(request, requested_profile=requested_profile))
 
 
+def about_view(request):
+    """Render the About Me page."""
+    return render(request, 'portfolio/about.html')
+
+
 @require_GET
 def bootstrap_view(request):
     return JsonResponse(build_bootstrap_payload(request))

@@ -14,6 +14,7 @@ urlpatterns = [
     path("", views.frontend_shell, name="home"),
     path("discover/", views.frontend_shell, name="discover"),
     path("dashboard/", views.frontend_shell, name="dashboard"),
+    path("about/", views.about_view, name="about"),
     path("api/secure/", include("portfolio.api_secure.urls")),
     path("robots.txt", views.robots_txt_view, name="robots"),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
