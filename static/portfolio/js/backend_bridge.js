@@ -1494,6 +1494,22 @@
     return document.getElementById("signupSubmitFeedback");
   }
 
+  function loginFeedbackElement() {
+    return document.getElementById("loginSubmitFeedback");
+  }
+
+  function setLoginFeedback(message, tone = "muted") {
+    const feedback = loginFeedbackElement();
+    if (!feedback) {
+      return;
+    }
+
+    feedback.textContent = message || "";
+    feedback.style.display = message ? "block" : "none";
+    feedback.style.color =
+      tone === "error" ? "var(--accent)" : tone === "success" ? "#16a34a" : "var(--text-muted)";
+  }
+
   function setSignupFeedback(message, tone = "muted") {
     const feedback = signupFeedbackElement();
     if (!feedback) {
@@ -2713,6 +2729,7 @@
 
   window.handleLogin = async function () {
     const button = document.getElementById("loginSubmitAction");
+    setLoginFeedback("Checking your credentials and signing you in...", "muted");
     try {
       await withButtonProgress(
         button,
@@ -2726,12 +2743,14 @@
           replaceState(payload);
           document.getElementById("loginUsername").value = "";
           document.getElementById("loginPassword").value = "";
+          setLoginFeedback("Login successful. Opening your account...", "success");
           window.closeModal("loginModal");
           window.showToast(payload.message, "success");
           window.navigate("profile", window.currentUser);
         }
       );
     } catch (error) {
+      setLoginFeedback(error.message, "error");
       window.showToast(error.message, "error");
     }
   };
@@ -3418,6 +3437,10 @@
 
   document.getElementById("videoPlayerModal")?.addEventListener("ela:before-close", function () {
     teardownPlayerModal();
+  });
+
+  document.getElementById("loginModal")?.addEventListener("ela:before-close", function () {
+    setLoginFeedback("", "muted");
   });
 
   document.getElementById("signupModal")?.addEventListener("ela:before-close", function () {

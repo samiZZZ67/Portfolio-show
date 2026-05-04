@@ -573,6 +573,7 @@ textarea.input-field { resize: vertical; min-height: 100px; }
     <div style="display:flex;align-items:center;gap:28px;" class="desktop-nav">
       <a href="#" class="nav-link" onclick="navigate('home');return false;">Home</a>
       <a href="#" class="nav-link" onclick="navigate('discover');return false;">Discover</a>
+      <a href="/about/" class="nav-link">About Me</a>
       <a href="#" class="nav-link" id="desktopAccountLink" onclick="openModal('loginModal');return false;">Sign In</a>
       <a
         href="/admin/"
@@ -605,6 +606,7 @@ textarea.input-field { resize: vertical; min-height: 100px; }
   <div style="display:flex;flex-direction:column;gap:20px;">
     <a href="#" class="nav-link" style="font-size:18px;" onclick="navigate('home');toggleMobileMenu();return false;">Home</a>
     <a href="#" class="nav-link" style="font-size:18px;" onclick="navigate('discover');toggleMobileMenu();return false;">Discover</a>
+    <a href="/about/" class="nav-link" style="font-size:18px;" onclick="toggleMobileMenu();">About Me</a>
     <a href="#" class="nav-link" id="mobileAccountLink" style="font-size:18px;" onclick="openModal('loginModal');toggleMobileMenu();return false;">Sign In</a>
     <a
       href="/admin/"
@@ -655,6 +657,9 @@ textarea.input-field { resize: vertical; min-height: 100px; }
           <button class="btn-secondary" onclick="navigate('discover')" style="padding:16px 36px;font-size:16px;">
             <i class="fas fa-compass"></i> Explore Editors
           </button>
+          <a href="/about/" class="btn-secondary" style="padding:16px 36px;font-size:16px;text-decoration:none;">
+            <i class="fas fa-user"></i> About Me
+          </a>
         </div>
         <div style="display:flex;gap:40px;margin-top:48px;">
           <div>
@@ -1065,6 +1070,7 @@ textarea.input-field { resize: vertical; min-height: 100px; }
       <button class="btn-primary" id="loginSubmitAction" onclick="handleLogin()" style="width:100%;justify-content:center;padding:14px;">
         <i class="fas fa-sign-in-alt"></i> Sign In
       </button>
+      <p id="loginSubmitFeedback" style="display:none;font-size:0.82rem;color:var(--text-muted);margin-top:10px;"></p>
       <p style="text-align:center;color:var(--text-secondary);font-size:0.9rem;">
         Don't have an account? <a href="#" onclick="closeModal('loginModal');openModal('signupModal');return false;" style="color:var(--accent);font-weight:600;text-decoration:none;">Sign Up</a>
       </p>
@@ -1200,6 +1206,7 @@ textarea.input-field { resize: vertical; min-height: 100px; }
         <div style="display:flex;flex-direction:column;gap:10px;">
           <a href="#" onclick="navigate('home');return false;" style="color:var(--text-secondary);text-decoration:none;font-size:0.9rem;transition:color 0.3s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-secondary)'">Home</a>
           <a href="#" onclick="navigate('discover');return false;" style="color:var(--text-secondary);text-decoration:none;font-size:0.9rem;transition:color 0.3s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-secondary)'">Discover Editors</a>
+          <a href="/about/" style="color:var(--text-secondary);text-decoration:none;font-size:0.9rem;transition:color 0.3s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-secondary)'">About Me</a>
           <a href="#" onclick="openModal('signupModal');return false;" style="color:var(--text-secondary);text-decoration:none;font-size:0.9rem;transition:color 0.3s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-secondary)'">Join as Editor</a>
         </div>
       </div>

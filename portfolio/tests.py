@@ -71,6 +71,15 @@ class PortfolioApiTests(TestCase):
         self.assertNotIn("display:none", desktop_admin_slice)
         self.assertNotIn("display:none", mobile_admin_slice)
 
+    def test_frontend_shell_shows_public_about_links_and_login_feedback(self):
+        response = self.client.get(reverse("portfolio:home"))
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('href="/about/" class="nav-link">About Me</a>', body)
+        self.assertIn('href="/about/" class="nav-link" style="font-size:18px;"', body)
+        self.assertIn('id="loginSubmitFeedback"', body)
+
     def test_frontend_shell_serves_custom_admin_route(self):
         response = self.client.get(reverse("portfolio:admin-dashboard"))
 
@@ -78,6 +87,13 @@ class PortfolioApiTests(TestCase):
         body = response.content.decode()
         self.assertIn('id="adminPage"', body)
         self.assertIn("Admin Dashboard", body)
+
+    def test_about_page_is_public(self):
+        response = self.client.get(reverse("portfolio:about"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "About Me")
+
 
     @override_settings(TELEGRAM_BOT_TOKEN="test-bot-token", TELEGRAM_WEBHOOK_SECRET="secret123")
     @patch("portfolio.api_secure.services.send_telegram_message", return_value="tg-message-1")
