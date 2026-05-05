@@ -183,6 +183,79 @@ select.input-field option { background: var(--bg-card); color: var(--text-primar
 
 textarea.input-field { resize: vertical; min-height: 100px; }
 
+.ai-assistant-shell {
+  position: relative;
+  overflow: hidden;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top right, var(--accent-glow), transparent 42%),
+    linear-gradient(145deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+}
+
+.ai-assistant-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
+  pointer-events: none;
+}
+
+.ai-assistant-layout {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.ai-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.ai-chip {
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: 'Outfit', sans-serif;
+}
+
+.ai-chip:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.ai-output {
+  min-height: 220px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.ai-status {
+  min-height: 22px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.ai-status[data-tone="success"] { color: var(--success); }
+.ai-status[data-tone="error"] { color: var(--accent); }
+.ai-status[data-tone="muted"] { color: var(--text-muted); }
+
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -546,6 +619,8 @@ textarea.input-field { resize: vertical; min-height: 100px; }
   .profile-stats { gap: 20px; }
   .short-video-card { width: 180px; }
   .hero-section { min-height: 90vh; }
+  .ai-assistant-shell { padding: 24px; }
+  .ai-assistant-layout { grid-template-columns: 1fr; }
   .modal-content { padding: 24px; margin: 10px; }
 }
 
@@ -715,6 +790,44 @@ textarea.input-field { resize: vertical; min-height: 100px; }
       <p class="section-subtitle" style="margin:8px auto 0;">Find the perfect editor for your project type</p>
     </div>
     <div class="animate-in" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;" id="categoryGrid">
+    </div>
+  </section>
+
+  <section style="max-width:1280px;margin:0 auto;padding:0 24px 100px;">
+    <div class="animate-in card ai-assistant-shell">
+      <div class="ai-assistant-layout">
+        <div>
+          <div class="badge" style="margin-bottom:18px;">
+            <i class="fas fa-wand-magic-sparkles"></i> AI Project Assistant
+          </div>
+          <h2 class="section-title" style="font-size:clamp(2rem,4vw,3rem);">Describe the edit you need and get instant help</h2>
+          <p class="section-subtitle" style="margin-top:14px;max-width:560px;">
+            Ask for a sharper client brief, stronger portfolio bio, or creative direction for your next reel. The assistant is wired into the live Django app, so you can plug your Gemini key in once and use it across the site.
+          </p>
+          <div class="ai-chip-row">
+            <button type="button" class="ai-chip" data-ai-prompt="Write a concise client brief for a 30-second product launch reel.">30s product reel brief</button>
+            <button type="button" class="ai-chip" data-ai-prompt="Improve this portfolio bio for a wedding video editor who wants premium clients.">Upgrade a wedding editor bio</button>
+            <button type="button" class="ai-chip" data-ai-prompt="What questions should I ask before hiring a video editor for YouTube content?">Hiring checklist for YouTube editing</button>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <label for="userInput" style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">Ask Gemini</label>
+          <textarea
+            class="input-field"
+            id="userInput"
+            placeholder="Describe your project, ask for editing advice, or paste a bio you want improved..."
+            style="min-height:140px;"
+          ></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div id="geminiStatus" class="ai-status" data-tone="muted">Connect a Gemini API key on the server to enable live responses.</div>
+            <button type="button" class="btn-primary" id="geminiSendBtn">
+              <i class="fas fa-paper-plane"></i> Send
+            </button>
+          </div>
+          <div id="output" class="ai-output">Your AI response will appear here.</div>
+        </div>
+      </div>
     </div>
   </section>
 

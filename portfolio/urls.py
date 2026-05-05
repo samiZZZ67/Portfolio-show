@@ -24,6 +24,7 @@ urlpatterns = [
     path("auth/login/", views.login_view, name="login"),
     path("auth/logout/", views.logout_view, name="logout"),
     path("api/bootstrap/", views.bootstrap_view, name="bootstrap"),
+    path("api/ai/gemini/", views.gemini_chat_view, name="gemini-chat"),
     path("api/search/", views.search_view, name="search"),
     path("api/profile/", views.profile_update_view, name="profile-update"),
     path("api/contacts/", views.contact_update_view, name="contact-update"),

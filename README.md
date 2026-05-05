@@ -9,6 +9,7 @@ A role-based video portfolio platform built with Django, allowing video editors 
 - **Secure Video Delivery**: Cloudinary integration for secure video streaming and downloads
 - **Download Request System**: Clients can request downloads with approval workflow
 - **Telegram Integration**: Notifications and approval/rejection via Telegram
+- **Gemini AI Assistant**: Same-origin Django endpoint plus a home-page AI prompt box for briefs, bios, and editing guidance
 - **REST API**: Full API for frontend integration
 - **Responsive Frontend**: Integrated with existing HTML/JS frontend
 - **Admin Dashboard**: Django admin for system management
@@ -193,6 +194,9 @@ The application is configured for deployment on Render:
 ### Environment Variables
 
 Create a `.env` file in your project root:
+
+- `GEMINI_API_KEY` enables the home-page AI assistant.
+- `GEMINI_MODEL` defaults to `gemini-2.5-flash` and can be changed if you want a different Gemini text model.
 
 ### Database
 

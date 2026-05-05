@@ -86,6 +86,8 @@
     const editors = Array.isArray(payload.editors) ? payload.editors : [];
     window.__elaBootstrap = payload;
     window.__elaEditors = editors;
+    window.__elaGeminiEnabled = Boolean(payload.gemini_enabled);
+    window.__elaGeminiModel = payload.gemini_model || "";
     syncAuthGlobals(
       payload.current_user || null,
       payload.current_user_role || null,
@@ -102,6 +104,7 @@
     }
     updateNavigationAuth();
     refreshActivePlayerState();
+    syncGeminiAssistantState();
   }
 
   function getCsrfToken() {
@@ -459,6 +462,150 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function geminiElements() {
+    return {
+      input: document.getElementById("userInput"),
+      sendButton: document.getElementById("geminiSendBtn"),
+      output: document.getElementById("output"),
+      status: document.getElementById("geminiStatus"),
+      chips: Array.from(document.querySelectorAll("[data-ai-prompt]")),
+    };
+  }
+
+  function setGeminiStatus(message, tone = "muted") {
+    const { status } = geminiElements();
+    if (!status) {
+      return;
+    }
+    status.textContent = message;
+    status.dataset.tone = tone;
+  }
+
+  function syncGeminiAssistantState() {
+    const { input, sendButton, output } = geminiElements();
+    if (!input || !sendButton || !output) {
+      return;
+    }
+
+    if (window.__elaGeminiEnabled) {
+      input.disabled = false;
+      sendButton.disabled = false;
+      sendButton.removeAttribute("title");
+      input.placeholder =
+        "Describe your project, ask for editing advice, or paste a bio you want improved...";
+      if (!output.dataset.aiTouched) {
+        output.textContent = "Your AI response will appear here.";
+      }
+      setGeminiStatus(
+        window.__elaGeminiModel
+          ? `Live and ready with ${window.__elaGeminiModel}. Press Ctrl+Enter to send faster.`
+          : "Live and ready. Press Ctrl+Enter to send faster.",
+        "success"
+      );
+      return;
+    }
+
+    input.disabled = true;
+    sendButton.disabled = true;
+    sendButton.title = "Add GEMINI_API_KEY on the server to enable this assistant.";
+    input.placeholder = "Add GEMINI_API_KEY to the Django environment to enable live responses.";
+    if (!output.dataset.aiTouched) {
+      output.textContent = "The assistant will show replies here once Gemini is configured.";
+    }
+    setGeminiStatus("AI assistant is offline until GEMINI_API_KEY is configured on the server.", "muted");
+  }
+
+  function fillGeminiPrompt(prompt) {
+    const { input } = geminiElements();
+    if (!input) {
+      return;
+    }
+    input.value = prompt || "";
+    input.focus();
+    setGeminiStatus("Prompt loaded. Press Send or Ctrl+Enter when you are ready.", "muted");
+  }
+
+  async function sendGeminiMessage() {
+    const { input, sendButton, output } = geminiElements();
+    if (!input || !sendButton || !output) {
+      return;
+    }
+
+    if (!window.__elaGeminiEnabled) {
+      syncGeminiAssistantState();
+      window.showToast("Add GEMINI_API_KEY on the server to enable the AI assistant.", "error");
+      return;
+    }
+
+    const message = input.value.trim();
+    if (!message) {
+      setGeminiStatus("Please enter a message before sending.", "error");
+      input.focus();
+      return;
+    }
+
+    output.dataset.aiTouched = "true";
+    output.textContent = "Thinking...";
+
+    await withButtonProgress(
+      sendButton,
+      {
+        loadingHtml: '<i class="fas fa-spinner fa-spin"></i> Sending',
+      },
+      async function () {
+        setGeminiStatus("Sending your request to Gemini...", "muted");
+        try {
+          const payload = await postJson("/api/ai/gemini/", {
+            message,
+          });
+          output.textContent = payload.reply || "Gemini did not return any text.";
+          setGeminiStatus(
+            payload.model ? `Reply generated with ${payload.model}.` : "Reply generated successfully.",
+            "success"
+          );
+        } catch (error) {
+          output.textContent = `Error: ${error.message}`;
+          setGeminiStatus("The AI request failed. You can adjust the prompt and try again.", "error");
+          window.showToast(error.message || "The AI request failed.", "error");
+        }
+      }
+    );
+  }
+
+  function ensureGeminiAssistant() {
+    const { input, sendButton, chips } = geminiElements();
+    if (!input || !sendButton) {
+      return;
+    }
+
+    if (!sendButton.dataset.elaBound) {
+      sendButton.dataset.elaBound = "true";
+      sendButton.addEventListener("click", sendGeminiMessage);
+    }
+
+    if (!input.dataset.elaBound) {
+      input.dataset.elaBound = "true";
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          sendGeminiMessage();
+        }
+      });
+    }
+
+    chips.forEach(function (chip) {
+      if (chip.dataset.elaBound) {
+        return;
+      }
+      chip.dataset.elaBound = "true";
+      chip.addEventListener("click", function () {
+        fillGeminiPrompt(chip.dataset.aiPrompt || "");
+      });
+    });
+
+    syncGeminiAssistantState();
   }
 
   function promptSignIn(message) {
@@ -3468,5 +3615,6 @@
   ensureSignupEnhancements();
   ensureDashboardEnhancements();
   ensureVideoSourceControls();
+  ensureGeminiAssistant();
   ensureFloatingUploadButton();
 })();
