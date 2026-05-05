@@ -1229,7 +1229,7 @@ textarea.input-field { resize: vertical; min-height: 100px; }
       </div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-      <p style="color:var(--text-muted);font-size:0.85rem;">2025 Ela-sam Portfolio Show. All rights reserved.</p>
+      <p style="color:var(--text-muted);font-size:0.85rem;">2026 Ela-sam Portfolio Show. All rights reserved.</p>
       <p style="color:var(--text-muted);font-size:0.85rem;">Built for video editors, by video editors.</p>
     </div>
   </div>
@@ -1432,12 +1432,7 @@ function navigate(page, data) {
       document.getElementById('dashboardPage').classList.add('active');
       renderDashboard();
       break;
-    case 'admin':
-      document.getElementById('adminPage').classList.add('active');
-      if (typeof renderAdminPage === 'function') {
-        renderAdminPage();
-      }
-      break;
+
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });

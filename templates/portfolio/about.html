@@ -397,35 +397,42 @@
             <a href="/admin/" class="nav-link" style="font-size:18px;" onclick="toggleMobileMenu();">Admin</a>
         </div>
     </div>
-
-    <!-- Hero Section -->
-    <section class="hero-section">
-        <div class="container">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;" class="hero-content">
-                <div class="fade-in">
-                    <h1 style="font-size:3.5rem;font-weight:700;margin-bottom:20px;background:linear-gradient(135deg,var(--gradient-start),var(--gradient-end));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">
-                        Hi, I'm Samuel Firegedil
-                    </h1>
-                    <p style="font-size:1.2rem;color:var(--text-secondary);margin-bottom:30px;line-height:1.6;">
-                        A passionate student and full-stack developer with a keen interest in AI and machine learning.
-                        I love creating innovative web applications and exploring the frontiers of technology.
-                    </p>
-                    <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                        <a href="#contact" class="btn-primary">
-                            <i class="fas fa-envelope"></i> Get In Touch
-                        </a>
-                        <a href="#journey" class="btn-secondary">
-                            <i class="fas fa-route"></i> My Journey
-                        </a>
-                    </div>
-                </div>
-                <div style="display:flex;justify-content:center;" class="fade-in delay-1">
-                    <img src="https://raw.githubusercontent.com/samiZZZ67/Assets/main/ela%20sam/samm.jpg"
-                    alt="Ela's Profile"
-                    class="profile-image">
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="container">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;" class="hero-content">
+            <!-- Left Column - Text Content -->
+            <div class="fade-in">
+                <h1 style="font-size:3.5rem;font-weight:700;margin-bottom:20px;background:linear-gradient(135deg,var(--gradient-start),var(--gradient-end));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">
+                    Hi, I'm Samuel Firegedil
+                </h1>
+                <p style="font-size:1.2rem;color:var(--text-secondary);margin-bottom:30px;line-height:1.6;">
+                    A passionate student and full-stack developer with a keen interest in AI and machine learning.
+                    I love creating innovative web applications and exploring the frontiers of technology.
+                </p>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                    <a href="#contact" class="btn-primary">
+                        <i class="fas fa-envelope"></i> Get In Touch
+                    </a>
+                    <a href="#journey" class="btn-secondary">
+                        <i class="fas fa-route"></i> My Journey
+                    </a>
                 </div>
             </div>
+            
+            <!-- Right Column - Stacked Images -->
+            <div style="display:flex;flex-direction:column;gap:30px;align-items:center;" class="fade-in delay-1">
+                <img src="https://raw.githubusercontent.com/samiZZZ67/Assets/main/ela%20sam/samm.jpg"
+                    alt="Sam's Profile"
+                    class="profile-image">
+                
+                <img src="https://raw.githubusercontent.com/samiZZZ67/Assets/main/ela%20sam/professinal%20looks%20sami.png"
+                    alt="Pro look Profile"
+                    class="profile-image">
+            </div>
         </div>
+    </div>
+</section>
     </section>
 
     <!-- My Journey Section -->
@@ -625,7 +632,7 @@
                     <p style="color:var(--text-secondary);margin-bottom:20px;">
                         Explore detailed documentation for my projects, including architecture and implementation details.
                     </p>
-                    <a href="/projects/" class="btn-secondary btn-sm">
+                    <a href="https://github.com/samiZZZ67/Portfolio-show/blob/main/README.md" class="btn-secondary btn-sm">
                         <i class="fas fa-external-link-alt"></i> View Projects
                     </a>
                 </div>
@@ -693,28 +700,39 @@
         </div>
     </section>
 
-    <!-- Footer -->
-    <footer style="background:var(--bg-card);border-top:1px solid var(--border);padding:40px 0;margin-top:80px;">
-        <div class="container">
-            <div style="text-align:center;">
-                <p style="color:var(--text-secondary);margin-bottom:20px;">
-                    © 2026 Ela. Built with passion and modern web technologies.
-                </p>
-                <div style="display:flex;justify-content:center;gap:20px;">
-                    <a href="#contact" style="color:var(--text-secondary);transition:color 0.3s;">
-                        <i class="fas fa-envelope"></i>
-                    </a>
-                    <a href="https://github.com/ela-dev" target="_blank" style="color:var(--text-secondary);transition:color 0.3s;">
-                        <i class="fab fa-github"></i>
-                    </a>
-                    <a href="https://t.me/ela_dev" target="_blank" style="color:var(--text-secondary);transition:color 0.3s;">
-                        <i class="fab fa-telegram"></i>
-                    </a>
-                </div>
+<!-- Footer -->
+<footer style="background:var(--bg-card);border-top:1px solid var(--border);padding:40px 0;margin-top:80px;">
+    <div class="container">
+        <div style="text-align:center;">
+            <p style="color:var(--text-secondary);margin-bottom:20px;">
+                © 2026 Sam. Built with passion and modern web technologies.
+            </p>
+            <style>
+                .social-link {
+                    color: var(--text-secondary);
+                    transition: all 0.3s ease;
+                    font-size: 1.5rem;
+                }
+                .social-link:hover {
+                    color: var(--gradient-start);
+                    transform: translateY(-3px);
+                }
+            </style>
+
+            <div style="display:flex;justify-content:center;gap:20px;">
+                <a href="mailto:abiyafikre@gmail.com" class="social-link" aria-label="Email">
+                    <i class="fas fa-envelope"></i>
+                </a>
+                <a href="https://github.com/samiZZZ67" target="_blank" class="social-link" aria-label="GitHub">
+                    <i class="fab fa-github"></i>
+                </a>
+                <a href="https://t.me/EloiCry" target="_blank" class="social-link" aria-label="Telegram">
+                    <i class="fab fa-telegram"></i>
+                </a>
             </div>
         </div>
-    </footer>
-
+    </div>
+</footer>
     <script>
         // Theme switching functionality
         function setTheme(theme) {
