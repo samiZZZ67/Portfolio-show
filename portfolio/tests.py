@@ -14,6 +14,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .gemini import GeminiAPIError
+from .groq import GroqAPIError
 from .models import (
     AccountRole,
     DownloadRequestStatus,
@@ -95,14 +96,16 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "About Me")
 
-    def test_frontend_shell_renders_gemini_assistant_markup(self):
+    def test_frontend_shell_renders_ai_assistant_markup(self):
         response = self.client.get(reverse("portfolio:home"))
 
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertIn("AI Project Assistant", body)
         self.assertIn('id="userInput"', body)
+        self.assertIn('id="groqSendBtn"', body)
         self.assertIn('id="geminiSendBtn"', body)
+        self.assertIn('id="aiStatus"', body)
         self.assertIn('id="output"', body)
 
     @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="gemini-2.5-flash")
@@ -121,6 +124,7 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(payload["model"], "gemini-2.5-flash")
         mock_generate_gemini_text.assert_called_once_with("Help me write a better editor bio.")
 
+    @override_settings(GEMINI_API_KEY="")
     def test_gemini_chat_requires_configuration(self):
         response = self.client.post(
             reverse("portfolio:gemini-chat"),
@@ -157,6 +161,57 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json()["message"], "Upstream Gemini failed.")
         mock_generate_gemini_text.assert_called_once()
+
+    @override_settings(GROQ_API_KEY="test-key", GROQ_MODEL="llama-3.1-8b-instant")
+    @patch("portfolio.views.generate_groq_text", return_value="Groq says hello.")
+    def test_groq_chat_returns_generated_reply(self, mock_generate_groq_text):
+        response = self.client.post(
+            reverse("portfolio:groq-chat"),
+            data=json.dumps({"message": "Write a fast hook for a short-form ad."}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["reply"], "Groq says hello.")
+        self.assertEqual(payload["model"], "llama-3.1-8b-instant")
+        mock_generate_groq_text.assert_called_once_with("Write a fast hook for a short-form ad.")
+
+    @override_settings(GROQ_API_KEY="")
+    def test_groq_chat_requires_configuration(self):
+        response = self.client.post(
+            reverse("portfolio:groq-chat"),
+            data=json.dumps({"message": "Hello"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["message"], "Groq is not configured on this server yet.")
+
+    @override_settings(GROQ_API_KEY="test-key")
+    def test_groq_chat_rejects_blank_message(self):
+        response = self.client.post(
+            reverse("portfolio:groq-chat"),
+            data=json.dumps({"message": "   "}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["message"], "Please enter a message before sending.")
+
+    @override_settings(GROQ_API_KEY="test-key")
+    @patch("portfolio.views.generate_groq_text", side_effect=GroqAPIError("Upstream Groq failed."))
+    def test_groq_chat_surfaces_upstream_errors(self, mock_generate_groq_text):
+        response = self.client.post(
+            reverse("portfolio:groq-chat"),
+            data=json.dumps({"message": "Need a faster ad concept."}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["message"], "Upstream Groq failed.")
+        mock_generate_groq_text.assert_called_once()
 
 
     @override_settings(TELEGRAM_BOT_TOKEN="test-bot-token", TELEGRAM_WEBHOOK_SECRET="secret123")
@@ -420,12 +475,19 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(payload["current_user"], "RegularBootstrap")
         self.assertFalse(payload["current_user_can_access_admin"])
 
-    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="gemini-2.5-flash")
-    def test_bootstrap_exposes_gemini_configuration(self):
+    @override_settings(
+        GEMINI_API_KEY="test-key",
+        GEMINI_MODEL="gemini-2.5-flash",
+        GROQ_API_KEY="groq-key",
+        GROQ_MODEL="llama-3.1-8b-instant",
+    )
+    def test_bootstrap_exposes_ai_configuration(self):
         response = self.client.get(reverse("portfolio:bootstrap"))
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        self.assertTrue(payload["groq_enabled"])
+        self.assertEqual(payload["groq_model"], "llama-3.1-8b-instant")
         self.assertTrue(payload["gemini_enabled"])
         self.assertEqual(payload["gemini_model"], "gemini-2.5-flash")
 

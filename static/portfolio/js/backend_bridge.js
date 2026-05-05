@@ -86,6 +86,8 @@
     const editors = Array.isArray(payload.editors) ? payload.editors : [];
     window.__elaBootstrap = payload;
     window.__elaEditors = editors;
+    window.__elaGroqEnabled = Boolean(payload.groq_enabled);
+    window.__elaGroqModel = payload.groq_model || "";
     window.__elaGeminiEnabled = Boolean(payload.gemini_enabled);
     window.__elaGeminiModel = payload.gemini_model || "";
     syncAuthGlobals(
@@ -104,7 +106,7 @@
     }
     updateNavigationAuth();
     refreshActivePlayerState();
-    syncGeminiAssistantState();
+    syncAiAssistantState();
   }
 
   function getCsrfToken() {
@@ -464,18 +466,19 @@
       .replace(/'/g, "&#39;");
   }
 
-  function geminiElements() {
+  function aiElements() {
     return {
       input: document.getElementById("userInput"),
-      sendButton: document.getElementById("geminiSendBtn"),
+      groqButton: document.getElementById("groqSendBtn"),
+      geminiButton: document.getElementById("geminiSendBtn"),
       output: document.getElementById("output"),
-      status: document.getElementById("geminiStatus"),
+      status: document.getElementById("aiStatus"),
       chips: Array.from(document.querySelectorAll("[data-ai-prompt]")),
     };
   }
 
-  function setGeminiStatus(message, tone = "muted") {
-    const { status } = geminiElements();
+  function setAiStatus(message, tone = "muted") {
+    const { status } = aiElements();
     if (!status) {
       return;
     }
@@ -483,65 +486,90 @@
     status.dataset.tone = tone;
   }
 
-  function syncGeminiAssistantState() {
-    const { input, sendButton, output } = geminiElements();
-    if (!input || !sendButton || !output) {
+  function syncAiAssistantState() {
+    const { input, groqButton, geminiButton, output } = aiElements();
+    if (!input || !groqButton || !geminiButton || !output) {
       return;
     }
 
-    if (window.__elaGeminiEnabled) {
-      input.disabled = false;
-      sendButton.disabled = false;
-      sendButton.removeAttribute("title");
-      input.placeholder =
-        "Describe your project, ask for editing advice, or paste a bio you want improved...";
-      if (!output.dataset.aiTouched) {
-        output.textContent = "Your AI response will appear here.";
-      }
-      setGeminiStatus(
-        window.__elaGeminiModel
-          ? `Live and ready with ${window.__elaGeminiModel}. Press Ctrl+Enter to send faster.`
-          : "Live and ready. Press Ctrl+Enter to send faster.",
+    const groqReady = window.__elaGroqEnabled;
+    const geminiReady = window.__elaGeminiEnabled;
+    const anyReady = groqReady || geminiReady;
+
+    input.disabled = !anyReady;
+    groqButton.disabled = !groqReady;
+    geminiButton.disabled = !geminiReady;
+
+    groqButton.title = groqReady ? "" : "Add GROQ_API_KEY on the server to enable Groq.";
+    geminiButton.title = geminiReady ? "" : "Add GEMINI_API_KEY on the server to enable Gemini.";
+    input.placeholder = anyReady
+      ? "Describe your project, ask for editing advice, or paste a bio you want improved..."
+      : "Add GROQ_API_KEY or GEMINI_API_KEY to the Django environment to enable live responses.";
+
+    if (!output.dataset.aiTouched) {
+      output.textContent = anyReady
+        ? "Your AI response will appear here."
+        : "The assistant will show replies here once Groq or Gemini is configured.";
+    }
+
+    if (groqReady && geminiReady) {
+      setAiStatus(
+        `Groq (${window.__elaGroqModel || "ready"}) is live, and Gemini (${window.__elaGeminiModel || "ready"}) is available as backup.`,
         "success"
       );
       return;
     }
 
-    input.disabled = true;
-    sendButton.disabled = true;
-    sendButton.title = "Add GEMINI_API_KEY on the server to enable this assistant.";
-    input.placeholder = "Add GEMINI_API_KEY to the Django environment to enable live responses.";
-    if (!output.dataset.aiTouched) {
-      output.textContent = "The assistant will show replies here once Gemini is configured.";
+    if (groqReady) {
+      setAiStatus(
+        `Groq is ready with ${window.__elaGroqModel || "your configured model"}. Gemini is currently offline.`,
+        "success"
+      );
+      return;
     }
-    setGeminiStatus("AI assistant is offline until GEMINI_API_KEY is configured on the server.", "muted");
+
+    if (geminiReady) {
+      setAiStatus(
+        `Gemini is ready with ${window.__elaGeminiModel || "your configured model"}. Groq is currently offline.`,
+        "success"
+      );
+      return;
+    }
+
+    setAiStatus("AI assistant is offline until GROQ_API_KEY or GEMINI_API_KEY is configured on the server.", "muted");
   }
 
-  function fillGeminiPrompt(prompt) {
-    const { input } = geminiElements();
+  function fillAiPrompt(prompt) {
+    const { input } = aiElements();
     if (!input) {
       return;
     }
     input.value = prompt || "";
     input.focus();
-    setGeminiStatus("Prompt loaded. Press Send or Ctrl+Enter when you are ready.", "muted");
+    setAiStatus("Prompt loaded. Click Groq or Gemini, or press Ctrl+Enter for Groq.", "muted");
   }
 
-  async function sendGeminiMessage() {
-    const { input, sendButton, output } = geminiElements();
-    if (!input || !sendButton || !output) {
+  async function sendAiMessage(provider) {
+    const { input, groqButton, geminiButton, output } = aiElements();
+    if (!input || !groqButton || !geminiButton || !output) {
       return;
     }
 
-    if (!window.__elaGeminiEnabled) {
-      syncGeminiAssistantState();
-      window.showToast("Add GEMINI_API_KEY on the server to enable the AI assistant.", "error");
+    const isGroq = provider === "groq";
+    const targetButton = isGroq ? groqButton : geminiButton;
+    const isEnabled = isGroq ? window.__elaGroqEnabled : window.__elaGeminiEnabled;
+    const endpoint = isGroq ? "/api/ai/groq/" : "/api/ai/gemini/";
+    const providerLabel = isGroq ? "Groq" : "Gemini";
+
+    if (!isEnabled) {
+      syncAiAssistantState();
+      window.showToast(`Add ${isGroq ? "GROQ_API_KEY" : "GEMINI_API_KEY"} on the server to enable ${providerLabel}.`, "error");
       return;
     }
 
     const message = input.value.trim();
     if (!message) {
-      setGeminiStatus("Please enter a message before sending.", "error");
+      setAiStatus("Please enter a message before sending.", "error");
       input.focus();
       return;
     }
@@ -550,39 +578,52 @@
     output.textContent = "Thinking...";
 
     await withButtonProgress(
-      sendButton,
+      targetButton,
       {
-        loadingHtml: '<i class="fas fa-spinner fa-spin"></i> Sending',
+        loadingHtml: isGroq
+          ? '<i class="fas fa-spinner fa-spin"></i> Asking Groq'
+          : '<i class="fas fa-spinner fa-spin"></i> Gemini',
       },
       async function () {
-        setGeminiStatus("Sending your request to Gemini...", "muted");
+        setAiStatus(`Sending your request to ${providerLabel}...`, "muted");
         try {
-          const payload = await postJson("/api/ai/gemini/", {
+          const payload = await postJson(endpoint, {
             message,
           });
-          output.textContent = payload.reply || "Gemini did not return any text.";
-          setGeminiStatus(
-            payload.model ? `Reply generated with ${payload.model}.` : "Reply generated successfully.",
+          output.textContent = payload.reply || `${providerLabel} did not return any text.`;
+          setAiStatus(
+            payload.model
+              ? `Reply generated with ${providerLabel} using ${payload.model}.`
+              : `Reply generated with ${providerLabel}.`,
             "success"
           );
         } catch (error) {
           output.textContent = `Error: ${error.message}`;
-          setGeminiStatus("The AI request failed. You can adjust the prompt and try again.", "error");
-          window.showToast(error.message || "The AI request failed.", "error");
+          setAiStatus(`The ${providerLabel} request failed. You can adjust the prompt and try again.`, "error");
+          window.showToast(error.message || `The ${providerLabel} request failed.`, "error");
         }
       }
     );
   }
 
-  function ensureGeminiAssistant() {
-    const { input, sendButton, chips } = geminiElements();
-    if (!input || !sendButton) {
+  function ensureAiAssistant() {
+    const { input, groqButton, geminiButton, chips } = aiElements();
+    if (!input || !groqButton || !geminiButton) {
       return;
     }
 
-    if (!sendButton.dataset.elaBound) {
-      sendButton.dataset.elaBound = "true";
-      sendButton.addEventListener("click", sendGeminiMessage);
+    if (!groqButton.dataset.elaBound) {
+      groqButton.dataset.elaBound = "true";
+      groqButton.addEventListener("click", function () {
+        sendAiMessage("groq");
+      });
+    }
+
+    if (!geminiButton.dataset.elaBound) {
+      geminiButton.dataset.elaBound = "true";
+      geminiButton.addEventListener("click", function () {
+        sendAiMessage("gemini");
+      });
     }
 
     if (!input.dataset.elaBound) {
@@ -590,7 +631,7 @@
       input.addEventListener("keydown", function (event) {
         if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
           event.preventDefault();
-          sendGeminiMessage();
+          sendAiMessage(window.__elaGroqEnabled ? "groq" : "gemini");
         }
       });
     }
@@ -601,11 +642,11 @@
       }
       chip.dataset.elaBound = "true";
       chip.addEventListener("click", function () {
-        fillGeminiPrompt(chip.dataset.aiPrompt || "");
+        fillAiPrompt(chip.dataset.aiPrompt || "");
       });
     });
 
-    syncGeminiAssistantState();
+    syncAiAssistantState();
   }
 
   function promptSignIn(message) {
@@ -3615,6 +3656,6 @@
   ensureSignupEnhancements();
   ensureDashboardEnhancements();
   ensureVideoSourceControls();
-  ensureGeminiAssistant();
+  ensureAiAssistant();
   ensureFloatingUploadButton();
 })();

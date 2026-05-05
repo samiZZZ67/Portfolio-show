@@ -235,6 +235,24 @@ textarea.input-field { resize: vertical; min-height: 100px; }
   transform: translateY(-1px);
 }
 
+.ai-provider-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ai-provider-actions .btn-primary,
+.ai-provider-actions .btn-secondary {
+  justify-content: center;
+}
+
+.ai-provider-mini {
+  padding: 10px 16px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
 .ai-output {
   min-height: 220px;
   padding: 18px;
@@ -621,6 +639,8 @@ textarea.input-field { resize: vertical; min-height: 100px; }
   .hero-section { min-height: 90vh; }
   .ai-assistant-shell { padding: 24px; }
   .ai-assistant-layout { grid-template-columns: 1fr; }
+  .ai-provider-actions { width: 100%; }
+  .ai-provider-actions .btn-primary { flex: 1; }
   .modal-content { padding: 24px; margin: 10px; }
 }
 
@@ -802,7 +822,7 @@ textarea.input-field { resize: vertical; min-height: 100px; }
           </div>
           <h2 class="section-title" style="font-size:clamp(2rem,4vw,3rem);">Describe the edit you need and get instant help</h2>
           <p class="section-subtitle" style="margin-top:14px;max-width:560px;">
-            Ask for a sharper client brief, stronger portfolio bio, or creative direction for your next reel. The assistant is wired into the live Django app, so you can plug your Gemini key in once and use it across the site.
+            Ask for a sharper client brief, stronger portfolio bio, or creative direction for your next reel. Groq is the fast primary option here, and Gemini stays available as a smaller backup button.
           </p>
           <div class="ai-chip-row">
             <button type="button" class="ai-chip" data-ai-prompt="Write a concise client brief for a 30-second product launch reel.">30s product reel brief</button>
@@ -812,7 +832,7 @@ textarea.input-field { resize: vertical; min-height: 100px; }
         </div>
 
         <div style="display:flex;flex-direction:column;gap:14px;">
-          <label for="userInput" style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">Ask Gemini</label>
+          <label for="userInput" style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">Ask Groq or Gemini</label>
           <textarea
             class="input-field"
             id="userInput"
@@ -820,10 +840,15 @@ textarea.input-field { resize: vertical; min-height: 100px; }
             style="min-height:140px;"
           ></textarea>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
-            <div id="geminiStatus" class="ai-status" data-tone="muted">Connect a Gemini API key on the server to enable live responses.</div>
-            <button type="button" class="btn-primary" id="geminiSendBtn">
-              <i class="fas fa-paper-plane"></i> Send
-            </button>
+            <div id="aiStatus" class="ai-status" data-tone="muted">Connect Groq or Gemini on the server to enable live responses.</div>
+            <div class="ai-provider-actions">
+              <button type="button" class="btn-primary" id="groqSendBtn">
+                <i class="fas fa-bolt"></i> Ask Groq
+              </button>
+              <button type="button" class="btn-secondary ai-provider-mini" id="geminiSendBtn">
+                <i class="fas fa-stars"></i> Gemini
+              </button>
+            </div>
           </div>
           <div id="output" class="ai-output">Your AI response will appear here.</div>
         </div>

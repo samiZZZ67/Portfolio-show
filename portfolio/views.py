@@ -24,6 +24,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .forms import ContactForm, LoginForm, ProfileForm, SignUpForm, VideoForm, VideoMoveForm
 from .gemini import GeminiAPIError, generate_gemini_text
+from .groq import GroqAPIError, generate_groq_text
 from .models import (
     AccountRole,
     DownloadRequestStatus,
@@ -457,6 +458,8 @@ def build_bootstrap_payload(request):
         "current_user_can_access_django_admin": can_access_django_admin(request),
         "admin_panel_url": reverse("portfolio:admin-dashboard"),
         "django_admin_url": reverse("admin:index"),
+        "groq_enabled": bool(settings.GROQ_API_KEY),
+        "groq_model": settings.GROQ_MODEL if settings.GROQ_API_KEY else "",
         "gemini_enabled": bool(settings.GEMINI_API_KEY),
         "gemini_model": settings.GEMINI_MODEL if settings.GEMINI_API_KEY else "",
         "editors": [],
@@ -797,6 +800,86 @@ def gemini_chat_view(request):
             "ok": True,
             "reply": reply,
             "model": settings.GEMINI_MODEL,
+        }
+    )
+
+
+@require_POST
+def groq_chat_view(request):
+    if not settings.GROQ_API_KEY:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Groq is not configured on this server yet.",
+            },
+            status=503,
+        )
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Send a valid JSON request body.",
+            },
+            status=400,
+        )
+
+    message = payload.get("message", "")
+    if not isinstance(message, str):
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Message must be a text string.",
+            },
+            status=400,
+        )
+
+    cleaned_message = message.strip()
+    if not cleaned_message:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Please enter a message before sending.",
+            },
+            status=400,
+        )
+
+    if len(cleaned_message) > 4000:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "Please keep your AI prompt under 4000 characters.",
+            },
+            status=400,
+        )
+
+    try:
+        reply = generate_groq_text(cleaned_message)
+    except GroqAPIError as exc:
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": str(exc),
+            },
+            status=502,
+        )
+    except Exception:
+        logger.exception("Unexpected Groq integration failure.")
+        return JsonResponse(
+            {
+                "ok": False,
+                "message": "The Groq assistant hit an unexpected error. Please try again.",
+            },
+            status=500,
+        )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "reply": reply,
+            "model": settings.GROQ_MODEL,
         }
     )
 
