@@ -2375,6 +2375,7 @@
         false
       );
       document.getElementById("adminGateLoginBtn")?.addEventListener("click", function () {
+        window.loginRedirectPath = "/admin/";
         window.openModal("loginModal");
       });
       document.getElementById("adminGateHomeBtn")?.addEventListener("click", function () {
@@ -2746,7 +2747,19 @@
           setLoginFeedback("Login successful. Opening your account...", "success");
           window.closeModal("loginModal");
           window.showToast(payload.message, "success");
-          window.navigate("profile", window.currentUser);
+          const redirectPath = window.loginRedirectPath;
+          window.loginRedirectPath = null;
+          if (redirectPath === "/admin/") {
+            window.navigate("admin");
+          } else if (window.currentPage && window.currentPage !== "home") {
+            if (window.currentPage === "profile") {
+              window.navigate("profile", window.currentProfileUser || window.currentUser);
+            } else {
+              window.navigate(window.currentPage);
+            }
+          } else {
+            window.navigate("profile", window.currentUser);
+          }
         }
       );
     } catch (error) {
