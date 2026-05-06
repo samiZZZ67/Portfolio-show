@@ -5,6 +5,11 @@ from urllib import error, request
 from django.conf import settings
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_HTTP_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/147.0.0.0 Safari/537.36"
+)
 
 
 class GroqAPIError(Exception):
@@ -65,6 +70,8 @@ def generate_groq_text(message):
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "User-Agent": GROQ_HTTP_USER_AGENT,
         },
         method="POST",
     )

@@ -782,6 +782,7 @@ def gemini_chat_view(request):
     try:
         reply = generate_gemini_text(cleaned_message)
     except GeminiAPIError as exc:
+        logger.warning("Gemini upstream request failed: %s", exc)
         return JsonResponse(
             {
                 "ok": False,
@@ -862,6 +863,7 @@ def groq_chat_view(request):
     try:
         reply = generate_groq_text(cleaned_message)
     except GroqAPIError as exc:
+        logger.warning("Groq upstream request failed: %s", exc)
         return JsonResponse(
             {
                 "ok": False,

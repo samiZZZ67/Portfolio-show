@@ -14,7 +14,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .gemini import GeminiAPIError
-from .groq import GroqAPIError
+from .groq import GROQ_HTTP_USER_AGENT, GroqAPIError, generate_groq_text
 from .models import (
     AccountRole,
     DownloadRequestStatus,
@@ -54,24 +54,15 @@ class PortfolioApiTests(TestCase):
         self.assertIn("portfolio/js/backend_bridge.js", body)
         self.assertNotIn("password: 'demo123'", body)
 
-    def test_frontend_shell_shows_admin_link_for_anonymous_visitors(self):
+    def test_frontend_shell_hides_admin_link_from_anonymous_visitors(self):
         response = self.client.get(reverse("portfolio:home"))
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
 
-        desktop_account_index = body.index('id="desktopAccountLink"')
-        desktop_admin_index = body.index('id="desktopAdminLink"')
-        mobile_account_index = body.index('id="mobileAccountLink"')
-        mobile_admin_index = body.index('id="mobileAdminLink"')
-
-        self.assertLess(desktop_account_index, desktop_admin_index)
-        self.assertLess(mobile_account_index, mobile_admin_index)
-
-        desktop_admin_slice = body[max(0, desktop_admin_index - 120): desktop_admin_index + 160]
-        mobile_admin_slice = body[max(0, mobile_admin_index - 120): mobile_admin_index + 160]
-
-        self.assertNotIn("display:none", desktop_admin_slice)
-        self.assertNotIn("display:none", mobile_admin_slice)
+        self.assertIn('id="desktopAccountLink"', body)
+        self.assertIn('id="mobileAccountLink"', body)
+        self.assertNotIn('id="desktopAdminLink"', body)
+        self.assertNotIn('id="mobileAdminLink"', body)
 
     def test_frontend_shell_shows_public_about_links_and_login_feedback(self):
         response = self.client.get(reverse("portfolio:home"))
@@ -95,6 +86,7 @@ class PortfolioApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "About Me")
+        self.assertNotContains(response, 'href="/admin/" class="nav-link"', html=False)
 
     def test_frontend_shell_renders_ai_assistant_markup(self):
         response = self.client.get(reverse("portfolio:home"))
@@ -212,6 +204,45 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json()["message"], "Upstream Groq failed.")
         mock_generate_groq_text.assert_called_once()
+
+    @override_settings(GROQ_API_KEY="test-key", GROQ_MODEL="llama-3.1-8b-instant")
+    @patch("portfolio.groq.request.urlopen")
+    def test_generate_groq_text_sends_browser_compatible_headers(self, mock_urlopen):
+        captured = {}
+
+        class FakeGroqResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": "ok",
+                                }
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+
+        def fake_urlopen(req, timeout):
+            captured["headers"] = dict(req.header_items())
+            captured["timeout"] = timeout
+            return FakeGroqResponse()
+
+        mock_urlopen.side_effect = fake_urlopen
+
+        reply = generate_groq_text("Reply with exactly: ok")
+
+        self.assertEqual(reply, "ok")
+        self.assertEqual(captured["headers"]["User-agent"], GROQ_HTTP_USER_AGENT)
+        self.assertEqual(captured["headers"]["Accept"], "application/json")
+        self.assertEqual(captured["headers"]["Content-type"], "application/json")
 
 
     @override_settings(TELEGRAM_BOT_TOKEN="test-bot-token", TELEGRAM_WEBHOOK_SECRET="secret123")
