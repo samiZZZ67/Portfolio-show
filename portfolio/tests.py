@@ -856,9 +856,60 @@ class PortfolioApiTests(TestCase):
         )
         video_payload = next(item for item in owner_payload["videos"] if item["id"] == str(video.id))
         self.assertEqual(video_payload["download_access_state"], DownloadRequestStatus.APPROVED)
+        self.assertFalse(video_payload["can_download"])
+        self.assertEqual(video_payload["download_url"], "")
+        self.assertIn(
+            f"/api/secure/videos/{video.id}/download-request/",
+            video_payload["request_access_url"],
+        )
         self.assertIn(
             f"/api/secure/videos/{video.id}/download/",
             video_payload["secure_download_url"],
+        )
+
+    def test_bootstrap_does_not_mark_approved_request_without_active_grant_as_downloadable(self):
+        owner = User.objects.create_user(
+            username="VideoOwnerNoGrant",
+            password="SecurePass123!",
+            email="ownernogrant@example.com",
+        )
+        requester = User.objects.create_user(
+            username="VideoRequesterNoGrant",
+            password="SecurePass123!",
+            email="requesternogrant@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Approved Request Without Grant",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "approved-no-grant.mp4",
+                b"video-bytes",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+        )
+        VideoDownloadRequest.objects.create(
+            requester=requester,
+            video=video,
+            status=DownloadRequestStatus.APPROVED,
+        )
+
+        self.client.force_login(requester)
+        payload = self.client.get(reverse("portfolio:bootstrap")).json()
+
+        owner_payload = next(
+            editor for editor in payload["editors"] if editor["username"] == owner.username
+        )
+        video_payload = next(item for item in owner_payload["videos"] if item["id"] == str(video.id))
+        self.assertEqual(video_payload["download_access_state"], "none")
+        self.assertFalse(video_payload["can_download"])
+        self.assertEqual(video_payload["download_url"], "")
+        self.assertIn(
+            f"/api/secure/videos/{video.id}/download-request/",
+            video_payload["request_access_url"],
         )
 
     def test_profile_update_supports_username_cname_and_avatar_upload(self):
@@ -1355,6 +1406,14 @@ class PortfolioApiTests(TestCase):
         self.assertTrue(mark_read_response.json()["is_read"])
 
         self.client.force_login(requester)
+        direct_download_response = self.client.get(
+            reverse(
+                "portfolio:video-download",
+                kwargs={"username": owner.username, "video_id": video.id},
+            )
+        )
+        self.assertEqual(direct_download_response.status_code, 403)
+
         link_response = self.client.get(reverse("portfolio:secure-video-download", args=[video.id]))
         self.assertEqual(link_response.status_code, 200)
         download_url = link_response.json()["download_url"]
@@ -1366,6 +1425,47 @@ class PortfolioApiTests(TestCase):
         )
         self.assertEqual(file_response.status_code, 200)
         self.assertIn("attachment;", file_response["Content-Disposition"])
+
+    def test_secure_download_link_rejects_non_owner_without_approved_request_backed_grant(self):
+        owner = User.objects.create_user(
+            username="GrantOwner",
+            password="SecurePass123!",
+            email="grantowner@example.com",
+        )
+        video = PortfolioVideo.objects.create(
+            profile=owner.editor_profile,
+            title="Grant Protected Download",
+            video_source=VideoSourceType.UPLOAD,
+            uploaded_file=SimpleUploadedFile(
+                "grant-protected.mp4",
+                b"fake-video-content",
+                content_type="video/mp4",
+            ),
+            content_type=VideoContentType.SHORT,
+            category=VideoCategory.SOCIAL_MEDIA,
+            duration="0:30",
+            sort_order=0,
+            original_filename="grant-protected.mp4",
+            original_format="mp4",
+        )
+
+        requester = User.objects.create_user(
+            username="GrantRequester",
+            password="SecurePass123!",
+            email="grantrequester@example.com",
+        )
+        requester.editor_profile.role = AccountRole.CLIENT
+        requester.editor_profile.save(update_fields=["role"])
+
+        VideoDownloadGrant.objects.create(
+            user=requester,
+            video=video,
+            is_active=True,
+        )
+
+        self.client.force_login(requester)
+        link_response = self.client.get(reverse("portfolio:secure-video-download", args=[video.id]))
+        self.assertEqual(link_response.status_code, 403)
 
     @patch("portfolio.api_secure.services.send_telegram_message", return_value="tg-message-123")
     def test_secure_download_request_response_confirms_owner_telegram_delivery(self, mock_send_telegram):

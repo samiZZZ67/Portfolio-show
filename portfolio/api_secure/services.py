@@ -317,11 +317,12 @@ def rating_summary(video):
 def active_download_grant_for(video, user):
     if not user or not user.is_authenticated or user.id == video.profile.user_id:
         return None
-    return VideoDownloadGrant.objects.filter(
+    return VideoDownloadGrant.objects.select_related("source_request").filter(
         user=user,
         video=video,
         is_active=True,
         revoked_at__isnull=True,
+        source_request__status=DownloadRequestStatus.APPROVED,
     ).first()
 
 

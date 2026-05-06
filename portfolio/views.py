@@ -132,7 +132,7 @@ def profile_queryset():
             ),
             Prefetch(
                 "videos__download_grants",
-                queryset=VideoDownloadGrant.objects.select_related("user").filter(
+                queryset=VideoDownloadGrant.objects.select_related("user", "source_request").filter(
                     is_active=True,
                     revoked_at__isnull=True,
                 ),
@@ -313,14 +313,18 @@ def download_access_state(video, current_profile=None):
         return "none"
 
     for grant in video.download_grants.all():
-        if grant.user_id == current_profile.user_id and grant.is_active and grant.revoked_at is None:
+        if (
+            grant.user_id == current_profile.user_id
+            and grant.is_active
+            and grant.revoked_at is None
+            and grant.source_request
+            and grant.source_request.status == DownloadRequestStatus.APPROVED
+        ):
             return "approved"
 
     for download_request in video.download_requests.all():
         if download_request.requester_id != current_profile.user_id:
             continue
-        if download_request.status == DownloadRequestStatus.APPROVED:
-            return "approved"
         if download_request.status == DownloadRequestStatus.PENDING:
             if download_request.telegram_message_id:
                 return "pending"

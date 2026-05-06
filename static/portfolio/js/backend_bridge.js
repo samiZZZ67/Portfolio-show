@@ -963,11 +963,11 @@
     if (!video?.has_uploaded_file) {
       return "hidden";
     }
-    if (video.download_access_state) {
-      return video.download_access_state;
-    }
     if (window.currentUser && ownerUsername && window.currentUser === ownerUsername) {
       return "owner";
+    }
+    if (video.download_access_state) {
+      return video.download_access_state;
     }
     return "none";
   }
@@ -1005,12 +1005,17 @@
     return video;
   }
 
-  async function beginSecureVideoDownload(video) {
+  async function beginSecureVideoDownload(video, ownerUsername = "") {
     if (!video) {
       return;
     }
 
-    if (video.download_url && videoDownloadAccessState(video) === "owner") {
+    if (!window.currentUser) {
+      promptSignIn("Sign in to download this video.");
+      return;
+    }
+
+    if (video.download_url && videoDownloadAccessState(video, ownerUsername) === "owner") {
       window.location.assign(video.download_url);
       return;
     }
@@ -1033,15 +1038,15 @@
 
     const currentState = videoDownloadAccessState(video, ownerUsername);
     if (currentState === "owner" || (window.currentUser && window.currentUser === ownerUsername)) {
-      await beginSecureVideoDownload(video);
-      return;
-    }
-    if (currentState === "approved") {
-      await beginSecureVideoDownload(video);
+      await beginSecureVideoDownload(video, ownerUsername);
       return;
     }
     if (!window.currentUser) {
       promptSignIn("Sign in to request download access.");
+      return;
+    }
+    if (currentState === "approved") {
+      await beginSecureVideoDownload(video, ownerUsername);
       return;
     }
 
@@ -1108,7 +1113,7 @@
       return button;
     }
 
-    if (state === "owner" || state === "approved") {
+    if (state === "owner") {
       button.className = compact ? "btn-secondary btn-sm" : "btn-secondary btn-sm";
       button.style.background = "rgba(15,23,42,0.82)";
       button.style.color = "#fff";
@@ -1117,7 +1122,7 @@
         event.preventDefault();
         event.stopPropagation();
         try {
-          await beginSecureVideoDownload(video);
+          await beginSecureVideoDownload(video, ownerUsername);
         } catch (error) {
           window.showToast(error.message || "Unable to start the download.", "error");
         }
@@ -1139,16 +1144,25 @@
     button.style.color = "#111827";
     button.style.borderColor = "rgba(255,140,66,0.95)";
     button.innerHTML =
-      state === "rejected" || state === "delivery_failed"
+      state === "approved"
+        ? '<i class="fas fa-lock-open"></i> Request Download'
+        : state === "rejected" || state === "delivery_failed"
         ? '<i class="fas fa-redo-alt"></i> Request Again'
-        : '<i class="fas fa-lock-open"></i> Request Access';
+        : '<i class="fas fa-lock-open"></i> Request Download';
     button.addEventListener("click", async function (event) {
       event.preventDefault();
       event.stopPropagation();
       try {
-        await requestVideoDownloadAccess(ownerUsername, video.id);
+        if (state === "approved") {
+          await beginSecureVideoDownload(video, ownerUsername);
+        } else {
+          await requestVideoDownloadAccess(ownerUsername, video.id);
+        }
       } catch (error) {
-        window.showToast(error.message || "Unable to request access.", "error");
+        window.showToast(
+          error.message || (state === "approved" ? "Unable to start the download." : "Unable to request access."),
+          "error"
+        );
       }
     });
     return button;
