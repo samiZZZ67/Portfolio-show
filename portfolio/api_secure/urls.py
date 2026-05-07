@@ -24,6 +24,7 @@ urlpatterns = [
         AdminProfileRoleUpdateAPIView.as_view(),
         name="secure-admin-profile-role",
     ),
+    
     path("videos/upload/", SecureVideoUploadAPIView.as_view(), name="secure-video-upload"),
     path("videos/<uuid:video_id>/stream/", SecureVideoStreamSessionAPIView.as_view(), name="secure-video-stream"),
     path("videos/<uuid:video_id>/stream/file/", SecureVideoStreamFileAPIView.as_view(), name="secure-video-stream-file"),

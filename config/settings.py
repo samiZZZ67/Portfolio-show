@@ -69,6 +69,11 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "portfolio.apps.PortfolioConfig",
+    'django.contrib.sites',  
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',  
 ]
 
 CLOUDINARY_STORAGE = {
@@ -108,6 +113,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    'allauth.account.middleware.AccountMiddleware', 
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -217,6 +223,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.BasicAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.AllowAny",
@@ -233,3 +240,16 @@ REST_FRAMEWORK = {
         "secure_owner_notifications": "120/hour",
     },
 }
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',  # Keeps your normal username/password login working
+    'allauth.account.auth_backends.AuthenticationBackend',  # Enables Google and email login
+]
+
+# Allauth core settings
+LOGIN_REDIRECT_URL = 'https://portfolio-show.onrender.com/dashboard'  # Where users go after login
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False  # Use email as unique identifier
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_VERIFICATION = 'optional'  # Set to 'mandatory' in production
+SOCIALACCOUNT_LOGIN_ON_GET = True
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # 
