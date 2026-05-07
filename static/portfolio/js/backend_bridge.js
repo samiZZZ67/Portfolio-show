@@ -1306,7 +1306,7 @@
     button.style.borderColor = "rgba(255,140,66,0.95)";
     button.innerHTML =
       state === "approved"
-        ? '<i class="fas fa-lock-open"></i> Request Download'
+        ? '<i class="fas fa-download"></i> Download'
         : state === "rejected" || state === "delivery_failed"
         ? '<i class="fas fa-redo-alt"></i> Request Again'
         : '<i class="fas fa-lock-open"></i> Request Download';
