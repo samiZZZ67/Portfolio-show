@@ -496,6 +496,17 @@ class PortfolioApiTests(TestCase):
         self.assertIn("GOOGLE_OAUTH_CLIENT_ID", payload["google_auth_message"])
 
     @override_settings(
+        GOOGLE_OAUTH_CONFIG_ERROR="Conflicting values were found for: GOOGLE_OAUTH_CLIENT_ID, GOOGLE_CLIENT_ID."
+    )
+    def test_bootstrap_surfaces_google_auth_config_conflicts(self):
+        response = self.client.get(reverse("portfolio:bootstrap"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["google_auth_available"])
+        self.assertIn("Conflicting values were found", payload["google_auth_message"])
+
+    @override_settings(
         SOCIALACCOUNT_PROVIDERS={
             "google": {
                 "APP": {

@@ -48,6 +48,20 @@ def first_env(*names, default=""):
             return value
     return default
 
+
+def resolve_env_aliases(*names):
+    resolved = {}
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            resolved[name] = value
+
+    unique_values = {value for value in resolved.values() if value}
+    if len(unique_values) > 1:
+        return "", resolved, f"Conflicting values were found for: {', '.join(resolved.keys())}."
+
+    return (next(iter(unique_values)) if unique_values else ""), resolved, ""
+
 SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-secret")
 DEBUG = os.environ.get("DEBUG", "False").lower() in {"1", "true", "yes"}
 IS_RENDER = bool(
@@ -227,20 +241,40 @@ GEMINI_API_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_API_TIMEOUT_SECONDS", "2
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant").strip() or "llama-3.1-8b-instant"
 GROQ_API_TIMEOUT_SECONDS = int(os.environ.get("GROQ_API_TIMEOUT_SECONDS", "20"))
-GOOGLE_OAUTH_CLIENT_ID = first_env(
+GOOGLE_OAUTH_CLIENT_ID_ENV_NAMES = (
     "GOOGLE_OAUTH_CLIENT_ID",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_OAUTH2_CLIENT_ID",
     "SOCIAL_AUTH_GOOGLE_CLIENT_ID",
     "SOCIALACCOUNT_GOOGLE_CLIENT_ID",
 )
-GOOGLE_OAUTH_CLIENT_SECRET = first_env(
+GOOGLE_OAUTH_CLIENT_SECRET_ENV_NAMES = (
     "GOOGLE_OAUTH_CLIENT_SECRET",
     "GOOGLE_CLIENT_SECRET",
     "GOOGLE_OAUTH2_CLIENT_SECRET",
     "SOCIAL_AUTH_GOOGLE_CLIENT_SECRET",
     "SOCIALACCOUNT_GOOGLE_CLIENT_SECRET",
 )
+GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_ID_VALUES, GOOGLE_OAUTH_CLIENT_ID_ERROR = resolve_env_aliases(
+    *GOOGLE_OAUTH_CLIENT_ID_ENV_NAMES
+)
+GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_CLIENT_SECRET_VALUES, GOOGLE_OAUTH_CLIENT_SECRET_ERROR = resolve_env_aliases(
+    *GOOGLE_OAUTH_CLIENT_SECRET_ENV_NAMES
+)
+GOOGLE_OAUTH_CONFIG_ERROR = " ".join(
+    part
+    for part in [
+        GOOGLE_OAUTH_CLIENT_ID_ERROR,
+        GOOGLE_OAUTH_CLIENT_SECRET_ERROR,
+        (
+            "Both a Google OAuth client ID and client secret must be set."
+            if (GOOGLE_OAUTH_CLIENT_ID and not GOOGLE_OAUTH_CLIENT_SECRET)
+            or (GOOGLE_OAUTH_CLIENT_SECRET and not GOOGLE_OAUTH_CLIENT_ID)
+            else ""
+        ),
+    ]
+    if part
+).strip()
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -282,7 +316,7 @@ SOCIALACCOUNT_PROVIDERS = {
         },
     }
 }
-if GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET:
+if GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET and not GOOGLE_OAUTH_CONFIG_ERROR:
     SOCIALACCOUNT_PROVIDERS["google"]["APP"] = {
         "client_id": GOOGLE_OAUTH_CLIENT_ID,
         "secret": GOOGLE_OAUTH_CLIENT_SECRET,

@@ -216,10 +216,14 @@ def build_google_auth_state(request):
         state["message"] = "Google sign-in is temporarily unavailable. Please try again later."
     else:
         if not apps:
-            state["message"] = (
-                "Google sign-in needs Google OAuth credentials before it can be used. "
-                f"{GOOGLE_AUTH_ENV_GUIDANCE}"
-            )
+            config_error = getattr(settings, "GOOGLE_OAUTH_CONFIG_ERROR", "").strip()
+            if config_error:
+                state["message"] = f"{config_error} {GOOGLE_AUTH_ENV_GUIDANCE}".strip()
+            else:
+                state["message"] = (
+                    "Google sign-in needs Google OAuth credentials before it can be used. "
+                    f"{GOOGLE_AUTH_ENV_GUIDANCE}"
+                )
         else:
             state["available"] = True
             state["message"] = GOOGLE_AUTH_READY_MESSAGE
