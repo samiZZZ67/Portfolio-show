@@ -5,8 +5,7 @@ from django.urls import include, path
 
 urlpatterns = [
     path("django-admin/", admin.site.urls),
-    path("", include("portfolio.urls")),
-    path('accounts/', include('allauth.urls')), 
+    path("accounts/", include("allauth.urls")),
 ]
 
 if find_spec("dj_rest_auth"):
@@ -16,3 +15,5 @@ if find_spec("dj_rest_auth"):
             path('api/auth/registration/', include('dj_rest_auth.registration.urls')),
         ]
     )
+
+urlpatterns.append(path("", include("portfolio.urls")))

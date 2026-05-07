@@ -542,6 +542,23 @@ class PortfolioApiTests(TestCase):
         self.assertIn("/accounts/google/login/", response["Location"])
         self.assertIn("next=%2Fadmin%2F", response["Location"])
 
+    @override_settings(
+        SOCIALACCOUNT_PROVIDERS={
+            "google": {
+                "APP": {
+                    "client_id": "test-google-client-id",
+                    "secret": "test-google-client-secret",
+                    "key": "",
+                }
+            }
+        }
+    )
+    def test_allauth_google_login_route_is_not_captured_by_portfolio_catchall(self):
+        response = self.client.get("/accounts/google/login/")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("accounts.google.com", response["Location"])
+
     def test_bootstrap_marks_staff_users_as_admin_capable(self):
         admin_user = User.objects.create_superuser(
             username="AdminBootstrap",
