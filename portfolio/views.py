@@ -50,6 +50,10 @@ TITLE_PATTERN = re.compile(r"<title>.*?</title>", re.DOTALL | re.IGNORECASE)
 USERNAME_VALIDATOR = UnicodeUsernameValidator()
 logger = logging.getLogger(__name__)
 GOOGLE_AUTH_READY_MESSAGE = "Continue with Google for a faster sign-in."
+GOOGLE_AUTH_ENV_GUIDANCE = (
+    "Add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in Render. "
+    "The app also accepts GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+)
 
 
 def json_error_response(form, status=400):
@@ -212,7 +216,10 @@ def build_google_auth_state(request):
         state["message"] = "Google sign-in is temporarily unavailable. Please try again later."
     else:
         if not apps:
-            state["message"] = "Google sign-in needs Google OAuth credentials before it can be used."
+            state["message"] = (
+                "Google sign-in needs Google OAuth credentials before it can be used. "
+                f"{GOOGLE_AUTH_ENV_GUIDANCE}"
+            )
         else:
             state["available"] = True
             state["message"] = GOOGLE_AUTH_READY_MESSAGE

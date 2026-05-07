@@ -40,6 +40,14 @@ for env_candidate in (BASE_DIR / ".env", BASE_DIR / "local.env"):
 def csv_env(name, default=""):
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
+
+def first_env(*names, default=""):
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return default
+
 SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-secret")
 DEBUG = os.environ.get("DEBUG", "False").lower() in {"1", "true", "yes"}
 IS_RENDER = bool(
@@ -219,8 +227,20 @@ GEMINI_API_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_API_TIMEOUT_SECONDS", "2
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant").strip() or "llama-3.1-8b-instant"
 GROQ_API_TIMEOUT_SECONDS = int(os.environ.get("GROQ_API_TIMEOUT_SECONDS", "20"))
-GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
-GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+GOOGLE_OAUTH_CLIENT_ID = first_env(
+    "GOOGLE_OAUTH_CLIENT_ID",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_OAUTH2_CLIENT_ID",
+    "SOCIAL_AUTH_GOOGLE_CLIENT_ID",
+    "SOCIALACCOUNT_GOOGLE_CLIENT_ID",
+)
+GOOGLE_OAUTH_CLIENT_SECRET = first_env(
+    "GOOGLE_OAUTH_CLIENT_SECRET",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_OAUTH2_CLIENT_SECRET",
+    "SOCIAL_AUTH_GOOGLE_CLIENT_SECRET",
+    "SOCIALACCOUNT_GOOGLE_CLIENT_SECRET",
+)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (

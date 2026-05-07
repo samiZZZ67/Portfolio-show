@@ -493,7 +493,7 @@ class PortfolioApiTests(TestCase):
         payload = response.json()
         self.assertFalse(payload["google_auth_available"])
         self.assertEqual(payload["google_auth_url"], reverse("portfolio:google-login-start"))
-        self.assertTrue(payload["google_auth_message"])
+        self.assertIn("GOOGLE_OAUTH_CLIENT_ID", payload["google_auth_message"])
 
     @override_settings(
         SOCIALACCOUNT_PROVIDERS={
