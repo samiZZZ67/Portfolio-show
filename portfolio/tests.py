@@ -118,6 +118,14 @@ class PortfolioApiTests(TestCase):
         self.assertIn('id="adminPage"', body)
         self.assertIn("Admin Dashboard", body)
 
+    def test_frontend_shell_serves_custom_admin_route_without_trailing_slash(self):
+        response = self.client.get("/admin")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('id="adminPage"', body)
+        self.assertIn("Admin Dashboard", body)
+
     def test_about_page_is_public(self):
         response = self.client.get(reverse("portfolio:about"))
 

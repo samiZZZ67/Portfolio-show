@@ -584,7 +584,7 @@ def build_seo_injection(request, requested_profile=None):
             "url": canonical,
             "image": request.build_absolute_uri(profile_avatar_src(requested_profile)),
         }
-    elif request.path == "/admin/":
+    elif request.path.rstrip("/") == "/admin":
         title = "Admin Dashboard | Ela-sam Portfolio Show"
         description = "Review platform activity, manage account roles, and process access requests."
         canonical = request.build_absolute_uri("/admin/")
