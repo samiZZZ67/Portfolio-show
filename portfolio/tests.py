@@ -4,11 +4,13 @@ import tempfile
 from io import StringIO
 from unittest.mock import patch
 
+from django import forms
 from django.contrib.auth.models import AnonymousUser, User
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.db import DatabaseError
+from django.template.loader import render_to_string
 from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -82,6 +84,31 @@ class PortfolioApiTests(TestCase):
         self.assertIn('id="signupGoogleAction"', body)
         self.assertIn('id="loginGoogleStatus"', body)
         self.assertIn('id="signupGoogleStatus"', body)
+
+    def test_socialaccount_signup_template_shows_friendly_existing_account_message(self):
+        class SocialConflictForm(forms.Form):
+            email = forms.EmailField(initial="abiyafikre@gmail.com")
+
+        form = SocialConflictForm(data={"email": "abiyafikre@gmail.com"})
+        form.is_valid()
+        form.add_error(
+            "email",
+            "An account already exists with this email address. Please sign in first.",
+        )
+
+        rendered = render_to_string(
+            "socialaccount/signup.html",
+            {
+                "form": form,
+                "redirect_field_name": "next",
+                "redirect_field_value": "/dashboard/",
+            },
+        )
+
+        self.assertIn("That email is already registered", rendered)
+        self.assertIn("Back to home", rendered)
+        self.assertIn("Try another Google account", rendered)
+        self.assertIn("abiyafikre@gmail.com", rendered)
 
     def test_frontend_shell_serves_custom_admin_route(self):
         response = self.client.get(reverse("portfolio:admin-dashboard"))
