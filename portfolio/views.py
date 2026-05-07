@@ -5,20 +5,22 @@ import mimetypes
 import re
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlencode
 
+from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from cloudinary.exceptions import Error as CloudinaryError
 from cloudinary.utils import cloudinary_url
 from django.conf import settings
 from django.contrib.auth import login, logout
 from django.contrib.auth.validators import UnicodeUsernameValidator
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.files.storage import FileSystemStorage
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, OperationalError, ProgrammingError, transaction
 from django.db.models import Count, F, Prefetch
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
@@ -47,6 +49,7 @@ DEFAULT_EDITORS_PATTERN = re.compile(
 TITLE_PATTERN = re.compile(r"<title>.*?</title>", re.DOTALL | re.IGNORECASE)
 USERNAME_VALIDATOR = UnicodeUsernameValidator()
 logger = logging.getLogger(__name__)
+GOOGLE_AUTH_READY_MESSAGE = "Continue with Google for a faster sign-in."
 
 
 def json_error_response(form, status=400):
@@ -177,6 +180,45 @@ def can_access_admin_dashboard(request, current_profile=None):
 
 def can_access_django_admin(request):
     return bool(request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser))
+
+
+def normalize_internal_redirect_path(value, fallback=""):
+    if not isinstance(value, str):
+        return fallback
+
+    normalized = value.strip()
+    if not normalized.startswith("/") or normalized.startswith("//"):
+        return fallback
+    return normalized
+
+
+def build_google_auth_state(request):
+    state = {
+        "available": False,
+        "login_url": reverse("portfolio:google-login-start"),
+        "message": "Google sign-in is currently unavailable.",
+        "provider_login_url": "",
+    }
+
+    try:
+        provider_login_url = reverse("google_login")
+        apps = get_socialaccount_adapter(request).list_apps(request, provider="google")
+    except NoReverseMatch:
+        state["message"] = "Google sign-in is not enabled on this server yet."
+    except (ImproperlyConfigured, OperationalError, ProgrammingError):
+        state["message"] = "Google sign-in needs the latest auth setup before it can go live."
+    except Exception:
+        logger.exception("Unable to inspect Google auth readiness.")
+        state["message"] = "Google sign-in is temporarily unavailable. Please try again later."
+    else:
+        if not apps:
+            state["message"] = "Google sign-in needs Google OAuth credentials before it can be used."
+        else:
+            state["available"] = True
+            state["message"] = GOOGLE_AUTH_READY_MESSAGE
+            state["provider_login_url"] = provider_login_url
+
+    return state
 
 
 def normalize_public_username(username):
@@ -451,6 +493,7 @@ def build_bootstrap_payload(request):
         following_ids = set(
             current_profile.following_relationships.values_list("followed_id", flat=True)
         )
+    google_auth = build_google_auth_state(request)
 
     payload = {
         "current_user": request.user.username if request.user.is_authenticated else None,
@@ -466,6 +509,9 @@ def build_bootstrap_payload(request):
         "groq_model": settings.GROQ_MODEL if settings.GROQ_API_KEY else "",
         "gemini_enabled": bool(settings.GEMINI_API_KEY),
         "gemini_model": settings.GEMINI_MODEL if settings.GEMINI_API_KEY else "",
+        "google_auth_available": google_auth["available"],
+        "google_auth_url": google_auth["login_url"],
+        "google_auth_message": google_auth["message"],
         "editors": [],
     }
     for profile in visible_profiles(request):
@@ -699,6 +745,29 @@ def bootstrap_view(request):
 
 
 @require_GET
+def google_login_start_view(request):
+    google_auth = build_google_auth_state(request)
+    if not google_auth["available"] or not google_auth["provider_login_url"]:
+        return render(
+            request,
+            "portfolio/google_auth_unavailable.html",
+            {
+                "message": google_auth["message"],
+                "home_url": reverse("portfolio:home"),
+                "dashboard_url": reverse("portfolio:dashboard"),
+            },
+            status=503,
+        )
+
+    next_path = normalize_internal_redirect_path(
+        request.GET.get("next"),
+        fallback=reverse("portfolio:dashboard"),
+    )
+    redirect_url = f'{google_auth["provider_login_url"]}?{urlencode({"next": next_path})}'
+    return redirect(redirect_url)
+
+
+@require_GET
 def search_view(request):
     query = request.GET.get("q", "")
     type_filter = request.GET.get("type", "all")
@@ -915,7 +984,7 @@ def signup_view(request):
             exc,
             "Profile media upload failed. Please try again with a shorter file name.",
         )
-    login(request, user)
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     welcome_message = (
         f"Welcome, {user.editor_profile.display_name}! Your portfolio is ready."
         if user.editor_profile.role == AccountRole.EDITOR

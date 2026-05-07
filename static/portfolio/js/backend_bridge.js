@@ -83,20 +83,61 @@
   }
 
   function replaceState(payload) {
-    const editors = Array.isArray(payload.editors) ? payload.editors : [];
-    window.__elaBootstrap = payload;
+    const editors = Array.isArray(payload.editors) ? payload.editors : window.__elaEditors || [];
+    const hasOwn = Object.prototype.hasOwnProperty;
+    const currentUser = hasOwn.call(payload, "current_user")
+      ? payload.current_user || null
+      : window.currentUser || null;
+    const currentUserRole = hasOwn.call(payload, "current_user_role")
+      ? payload.current_user_role || null
+      : window.currentUserRole || null;
+    const canAccessAdmin = hasOwn.call(payload, "current_user_can_access_admin")
+      ? payload.current_user_can_access_admin || false
+      : window.currentUserCanAccessAdmin || false;
+    const canAccessDjangoAdmin = hasOwn.call(payload, "current_user_can_access_django_admin")
+      ? payload.current_user_can_access_django_admin || false
+      : window.currentUserCanAccessDjangoAdmin || false;
+    const adminPanelUrl = hasOwn.call(payload, "admin_panel_url")
+      ? payload.admin_panel_url || "/admin/"
+      : window.adminPanelUrl || "/admin/";
+    const djangoAdminUrl = hasOwn.call(payload, "django_admin_url")
+      ? payload.django_admin_url || "/django-admin/"
+      : window.djangoAdminUrl || "/django-admin/";
+
+    window.__elaBootstrap = {
+      ...(window.__elaBootstrap || {}),
+      ...payload,
+      editors,
+    };
     window.__elaEditors = editors;
-    window.__elaGroqEnabled = Boolean(payload.groq_enabled);
-    window.__elaGroqModel = payload.groq_model || "";
-    window.__elaGeminiEnabled = Boolean(payload.gemini_enabled);
-    window.__elaGeminiModel = payload.gemini_model || "";
+    window.__elaGroqEnabled = hasOwn.call(payload, "groq_enabled")
+      ? Boolean(payload.groq_enabled)
+      : Boolean(window.__elaGroqEnabled);
+    window.__elaGroqModel = hasOwn.call(payload, "groq_model")
+      ? payload.groq_model || ""
+      : window.__elaGroqModel || "";
+    window.__elaGeminiEnabled = hasOwn.call(payload, "gemini_enabled")
+      ? Boolean(payload.gemini_enabled)
+      : Boolean(window.__elaGeminiEnabled);
+    window.__elaGeminiModel = hasOwn.call(payload, "gemini_model")
+      ? payload.gemini_model || ""
+      : window.__elaGeminiModel || "";
+    window.__elaGoogleAuthAvailable = hasOwn.call(payload, "google_auth_available")
+      ? Boolean(payload.google_auth_available)
+      : Boolean(window.__elaGoogleAuthAvailable);
+    window.__elaGoogleAuthUrl = hasOwn.call(payload, "google_auth_url")
+      ? payload.google_auth_url || ""
+      : window.__elaGoogleAuthUrl || "";
+    window.__elaGoogleAuthMessage = hasOwn.call(payload, "google_auth_message")
+      ? payload.google_auth_message || ""
+      : window.__elaGoogleAuthMessage || "";
     syncAuthGlobals(
-      payload.current_user || null,
-      payload.current_user_role || null,
-      payload.current_user_can_access_admin || false,
-      payload.current_user_can_access_django_admin || false,
-      payload.admin_panel_url || "/admin/",
-      payload.django_admin_url || "/django-admin/"
+      currentUser,
+      currentUserRole,
+      canAccessAdmin,
+      canAccessDjangoAdmin,
+      adminPanelUrl,
+      djangoAdminUrl
     );
 
     if (window.currentUser) {
@@ -107,6 +148,7 @@
     updateNavigationAuth();
     refreshActivePlayerState();
     syncAiAssistantState();
+    syncGoogleAuthUi();
   }
 
   function getCsrfToken() {
@@ -653,6 +695,125 @@
     window.showToast(message || "Please sign in to continue.", "error");
     window.openModal("loginModal");
   }
+
+  function googleAuthState() {
+    return {
+      available: Boolean(window.__elaGoogleAuthAvailable),
+      url: window.__elaGoogleAuthUrl || "",
+      message:
+        window.__elaGoogleAuthMessage ||
+        (window.__elaGoogleAuthAvailable
+          ? "Continue with Google for a faster sign-in."
+          : "Google sign-in is currently unavailable."),
+    };
+  }
+
+  function buildUrlWithQuery(url, params) {
+    const target = new URL(url || "/", window.location.origin);
+    Object.entries(params || {}).forEach(function ([key, value]) {
+      if (value) {
+        target.searchParams.set(key, value);
+      }
+    });
+    return `${target.pathname}${target.search}${target.hash}`;
+  }
+
+  function preferredAuthRedirectPath(fallback) {
+    const requested = window.loginRedirectPath;
+    if (typeof requested === "string" && requested.startsWith("/") && !requested.startsWith("//")) {
+      return requested;
+    }
+
+    const current = `${window.location.pathname || ""}${window.location.search || ""}` || "/";
+    if (current !== "/" && !current.startsWith("/accounts/")) {
+      return current;
+    }
+    return fallback;
+  }
+
+  function resolveGoogleAuthRedirectPath(context) {
+    if (context === "admin") {
+      return preferredAuthRedirectPath("/admin/");
+    }
+    if (context === "signup") {
+      return "/dashboard/";
+    }
+    return preferredAuthRedirectPath("/dashboard/");
+  }
+
+  function setGoogleAuthStatus(elementId, message, tone) {
+    const status = document.getElementById(elementId);
+    if (!status) {
+      return;
+    }
+    status.textContent = message || "";
+    status.dataset.tone = tone || "muted";
+  }
+
+  function configureGoogleAuthButton(buttonId, statusId, context, fallbackLabel) {
+    const button = document.getElementById(buttonId);
+    if (!button) {
+      return;
+    }
+
+    const state = googleAuthState();
+    const label = button.querySelector("[data-google-label]");
+    if (label && fallbackLabel) {
+      label.textContent = fallbackLabel;
+    }
+
+    button.disabled = !state.available;
+    button.setAttribute("aria-disabled", state.available ? "false" : "true");
+    button.classList.toggle("is-disabled", !state.available);
+    setGoogleAuthStatus(statusId, state.message, state.available ? "ready" : "warning");
+
+    if (!button.dataset.elaBound) {
+      button.dataset.elaBound = "true";
+      button.addEventListener("click", function () {
+        window.startGoogleAuth(button.dataset.googleContext || context);
+      });
+    }
+    button.dataset.googleContext = context;
+  }
+
+  function syncGoogleAuthUi() {
+    configureGoogleAuthButton(
+      "loginGoogleAction",
+      "loginGoogleStatus",
+      "login",
+      "Continue with Google"
+    );
+    configureGoogleAuthButton(
+      "signupGoogleAction",
+      "signupGoogleStatus",
+      "signup",
+      "Start with Google"
+    );
+  }
+
+  window.startGoogleAuth = function (context) {
+    const state = googleAuthState();
+    if (!state.available || !state.url) {
+      if (context === "signup") {
+        setSignupFeedback(state.message, "error");
+      } else {
+        setLoginFeedback(state.message, "error");
+      }
+      window.showToast(state.message, "error");
+      return;
+    }
+
+    const redirectPath = resolveGoogleAuthRedirectPath(context);
+    const targetUrl = buildUrlWithQuery(state.url, { next: redirectPath });
+
+    if (context === "signup") {
+      setSignupFeedback("Redirecting you to Google...", "muted");
+    } else {
+      setLoginFeedback("Redirecting you to Google...", "muted");
+    }
+
+    window.location.href = targetUrl;
+  };
 
   function videoLikeCount(video) {
     return Number(video?.likes_count ?? video?.like_count ?? 0);
@@ -2566,16 +2727,31 @@
     }
 
     if (!window.currentUser) {
+      const googleAuth = googleAuthState();
       renderAdminGate(
         `<div style="display:flex;flex-direction:column;gap:14px;">` +
           `<div style="font-weight:700;font-size:1.05rem;">Sign in to continue</div>` +
           `<p style="color:var(--text-secondary);line-height:1.6;">The admin dashboard is only available to approved admin accounts.</p>` +
           `<div style="display:flex;gap:12px;flex-wrap:wrap;">` +
+          `<button type="button" class="btn-secondary btn-sm social-auth-button" id="adminGateGoogleBtn"${
+            googleAuth.available ? "" : " disabled"
+          }>` +
+          `<span class="google-mark" aria-hidden="true">G</span>` +
+          `<span>Continue with Google</span>` +
+          `</button>` +
           `<button type="button" class="btn-primary btn-sm" id="adminGateLoginBtn"><i class="fas fa-sign-in-alt"></i> Sign In</button>` +
           `<button type="button" class="btn-secondary btn-sm" id="adminGateHomeBtn"><i class="fas fa-house"></i> Back Home</button>` +
-          `</div></div>`,
+          `</div>` +
+          `<p style="color:${googleAuth.available ? "var(--text-muted)" : "var(--accent)"};font-size:0.82rem;">${escapeHtml(
+            googleAuth.message
+          )}</p>` +
+          `</div>`,
         false
       );
+      document.getElementById("adminGateGoogleBtn")?.addEventListener("click", function () {
+        window.loginRedirectPath = "/admin/";
+        window.startGoogleAuth("admin");
+      });
       document.getElementById("adminGateLoginBtn")?.addEventListener("click", function () {
         window.loginRedirectPath = "/admin/";
         window.openModal("loginModal");

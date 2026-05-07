@@ -484,6 +484,113 @@ textarea.input-field { resize: vertical; min-height: 100px; }
 }
 .modal-overlay.show .modal-content { transform: scale(1); }
 
+.social-auth-panel {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at top right, var(--accent-glow), transparent 46%),
+    linear-gradient(145deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.social-auth-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.social-auth-copy h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.social-auth-copy p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+
+.social-auth-button {
+  width: 100%;
+  justify-content: center;
+  gap: 12px;
+}
+
+.social-auth-button[disabled],
+.social-auth-button.is-disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.social-auth-button[disabled]:hover,
+.social-auth-button.is-disabled:hover {
+  transform: none;
+  border-color: var(--border);
+  background: var(--bg-card);
+}
+
+.google-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4285f4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.social-auth-status {
+  min-height: 1.2em;
+  font-size: 0.8rem;
+  margin-top: -4px;
+  color: var(--text-muted);
+}
+
+.social-auth-status[data-tone="warning"] {
+  color: var(--accent);
+}
+
+.social-auth-status[data-tone="ready"] {
+  color: var(--text-secondary);
+}
+
 .toast-container {
   position: fixed; top: 80px; right: 20px; z-index: 3000;
   display: flex; flex-direction: column; gap: 10px;
@@ -1184,6 +1291,19 @@ textarea.input-field { resize: vertical; min-height: 100px; }
       <button class="btn-icon" onclick="closeModal('loginModal')"><i class="fas fa-times"></i></button>
     </div>
     <div style="display:flex;flex-direction:column;gap:18px;">
+      <div class="social-auth-panel">
+        <div class="social-auth-copy">
+          <span class="social-auth-kicker"><i class="fab fa-google"></i> Faster access</span>
+          <h3>Continue with Google</h3>
+          <p>Use your Google account to get back into your portfolio without remembering a username.</p>
+        </div>
+        <button class="btn-secondary social-auth-button" id="loginGoogleAction" type="button">
+          <span class="google-mark" aria-hidden="true">G</span>
+          <span data-google-label>Continue with Google</span>
+        </button>
+        <p class="social-auth-status" id="loginGoogleStatus">Checking Google sign-in availability...</p>
+      </div>
+      <div class="auth-divider"><span>or use your username and password</span></div>
       <div>
         <label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Username</label>
         <input type="text" class="input-field" id="loginUsername" placeholder="Your unique username">
@@ -1211,6 +1331,19 @@ textarea.input-field { resize: vertical; min-height: 100px; }
       <button class="btn-icon" onclick="closeModal('signupModal')"><i class="fas fa-times"></i></button>
     </div>
     <div style="display:flex;flex-direction:column;gap:18px;">
+      <div class="social-auth-panel">
+        <div class="social-auth-copy">
+          <span class="social-auth-kicker"><i class="fab fa-google"></i> Quick setup</span>
+          <h3>Start with Google</h3>
+          <p>Create your account faster, then finish your portfolio details from the dashboard.</p>
+        </div>
+        <button class="btn-secondary social-auth-button" id="signupGoogleAction" type="button">
+          <span class="google-mark" aria-hidden="true">G</span>
+          <span data-google-label>Start with Google</span>
+        </button>
+        <p class="social-auth-status" id="signupGoogleStatus">Checking Google sign-in availability...</p>
+      </div>
+      <div class="auth-divider"><span>or create your account manually</span></div>
       <div>
         <label style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;display:block;">Username <span style="color:var(--accent);">*</span></label>
         <input type="text" class="input-field" id="signupUsername" placeholder="Choose a unique username (case-sensitive)">

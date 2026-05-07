@@ -73,6 +73,16 @@ class PortfolioApiTests(TestCase):
         self.assertIn('href="/about/" class="nav-link" style="font-size:18px;"', body)
         self.assertIn('id="loginSubmitFeedback"', body)
 
+    def test_frontend_shell_includes_google_auth_actions(self):
+        response = self.client.get(reverse("portfolio:home"))
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('id="loginGoogleAction"', body)
+        self.assertIn('id="signupGoogleAction"', body)
+        self.assertIn('id="loginGoogleStatus"', body)
+        self.assertIn('id="signupGoogleStatus"', body)
+
     def test_frontend_shell_serves_custom_admin_route(self):
         response = self.client.get(reverse("portfolio:admin-dashboard"))
 
@@ -475,6 +485,62 @@ class PortfolioApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["message"], "Login successful.")
         self.assertEqual(self.client.session.get("_auth_user_id"), str(user.pk))
+
+    def test_bootstrap_exposes_google_auth_as_unavailable_without_credentials(self):
+        response = self.client.get(reverse("portfolio:bootstrap"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["google_auth_available"])
+        self.assertEqual(payload["google_auth_url"], reverse("portfolio:google-login-start"))
+        self.assertTrue(payload["google_auth_message"])
+
+    @override_settings(
+        SOCIALACCOUNT_PROVIDERS={
+            "google": {
+                "APP": {
+                    "client_id": "test-google-client-id",
+                    "secret": "test-google-client-secret",
+                    "key": "",
+                }
+            }
+        }
+    )
+    def test_bootstrap_exposes_google_auth_when_configured(self):
+        response = self.client.get(reverse("portfolio:bootstrap"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["google_auth_available"])
+        self.assertEqual(payload["google_auth_url"], reverse("portfolio:google-login-start"))
+        self.assertEqual(payload["google_auth_message"], "Continue with Google for a faster sign-in.")
+
+    def test_google_login_start_view_renders_unavailable_page_when_unconfigured(self):
+        response = self.client.get(reverse("portfolio:google-login-start"))
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(response, "Google auth is not ready yet", status_code=503)
+
+    @override_settings(
+        SOCIALACCOUNT_PROVIDERS={
+            "google": {
+                "APP": {
+                    "client_id": "test-google-client-id",
+                    "secret": "test-google-client-secret",
+                    "key": "",
+                }
+            }
+        }
+    )
+    def test_google_login_start_view_redirects_to_provider_with_next_path(self):
+        response = self.client.get(
+            reverse("portfolio:google-login-start"),
+            {"next": "/admin/"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/google/login/", response["Location"])
+        self.assertIn("next=%2Fadmin%2F", response["Location"])
 
     def test_bootstrap_marks_staff_users_as_admin_capable(self):
         admin_user = User.objects.create_superuser(
