@@ -118,6 +118,40 @@ h1, h2, h3, h4, h5 { font-family: 'Space Grotesk', sans-serif; }
 }
 .nav-link:hover::after { width: 100%; }
 
+.brand-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 10px 22px var(--accent-glow));
+}
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+.brand-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+.brand-subtitle {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
 .btn-primary {
   background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
   color: #fff; border: none; padding: 12px 28px;
@@ -767,9 +801,12 @@ textarea.input-field { resize: vertical; min-height: 100px; }
 <!-- Navigation -->
 <nav class="nav-main" id="mainNav">
   <div style="max-width:1280px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:68px;">
-    <a href="#" onclick="navigate('home');return false;" style="display:flex;align-items:center;gap:10px;text-decoration:none;">
-      <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--gradient-start),var(--gradient-end));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;font-family:'Space Grotesk',sans-serif;">E</div>
-      <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:var(--text-primary);">Editors Space</span>
+    <a href="#" onclick="navigate('home');return false;" class="brand-link">
+      <img src="/static/portfolio/img/logo-mark.png" alt="Editor's Space logo" class="brand-mark">
+      <span class="brand-copy">
+        <span class="brand-title">Editor's Space</span>
+        <span class="brand-subtitle">By Ela-sam</span>
+      </span>
     </a>
 
     <div style="display:flex;align-items:center;gap:28px;" class="desktop-nav">
