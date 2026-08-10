@@ -1,23 +1,24 @@
 :root {
-  --portfolio-admin-accent: #e95b2b;
-  --portfolio-admin-accent-dark: #b93816;
-  --portfolio-admin-surface: #ffffff;
-  --portfolio-admin-surface-soft: #fff4ee;
-  --portfolio-admin-border: #ead8d0;
-  --portfolio-admin-text: #251915;
-  --portfolio-admin-muted: #75584e;
+  --portfolio-admin-accent: #FFD000;
+  --portfolio-admin-accent-dark: #E5A900;
+  --portfolio-admin-surface: #151515;
+  --portfolio-admin-surface-soft: #1B1B1B;
+  --portfolio-admin-border: #262626;
+  --portfolio-admin-text: #FFFFFF;
+  --portfolio-admin-muted: #B8B8B8;
 }
 
 #header {
   background:
-    radial-gradient(circle at top left, rgba(255, 166, 77, 0.24), transparent 32%),
-    linear-gradient(135deg, #1d1412 0%, #35201a 58%, #5a2819 100%);
-  color: #fff;
+    radial-gradient(circle at top left, rgba(255, 208, 0, 0.20), transparent 32%),
+    linear-gradient(135deg, #0B0B0B 0%, #151515 58%, #1F1F1F 100%);
+  color: #FFFFFF;
+  border-bottom: 1px solid #262626;
 }
 
 #header a:link,
 #header a:visited {
-  color: #fff;
+  color: #FFFFFF;
 }
 
 .portfolio-admin-brand {
@@ -31,6 +32,7 @@
   font-weight: 700;
   letter-spacing: 0.01em;
   text-decoration: none;
+  color: #FFD000;
 }
 
 .portfolio-admin-brand__subtitle {
@@ -53,14 +55,16 @@
   min-height: 36px;
   padding: 0.45rem 0.9rem;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 208, 0, 0.3);
+  background: rgba(255, 208, 0, 0.1);
+  color: #FFD000;
   text-decoration: none;
   font-weight: 600;
 }
 
 .portfolio-admin-toplinks a:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: #FFD000;
+  color: #0B0B0B;
 }
 
 .portfolio-admin-hero {
@@ -69,14 +73,14 @@
   border: 1px solid var(--portfolio-admin-border);
   border-radius: 20px;
   background:
-    radial-gradient(circle at top right, rgba(233, 91, 43, 0.12), transparent 28%),
-    linear-gradient(180deg, #fffdfc 0%, var(--portfolio-admin-surface-soft) 100%);
-  box-shadow: 0 18px 40px rgba(57, 23, 14, 0.08);
+    radial-gradient(circle at top right, rgba(255, 208, 0, 0.14), transparent 28%),
+    linear-gradient(180deg, #1B1B1B 0%, var(--portfolio-admin-surface) 100%);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
 }
 
 .portfolio-admin-kicker {
   margin: 0 0 0.4rem;
-  color: var(--portfolio-admin-accent-dark);
+  color: var(--portfolio-admin-accent);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -114,18 +118,19 @@
   border: 1px solid var(--portfolio-admin-border);
   color: var(--portfolio-admin-text);
   text-decoration: none;
-  box-shadow: 0 10px 24px rgba(57, 23, 14, 0.06);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .portfolio-admin-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(233, 91, 43, 0.5);
-  box-shadow: 0 16px 32px rgba(57, 23, 14, 0.1);
+  border-color: rgba(255, 208, 0, 0.6);
+  box-shadow: 0 16px 32px rgba(255, 208, 0, 0.15);
 }
 
 .portfolio-admin-card strong {
   font-size: 1rem;
+  color: #FFFFFF;
 }
 
 .portfolio-admin-card span {

@@ -857,7 +857,7 @@
   function renderStaticStars(value, compact = false) {
     const rounded = Math.max(0, Math.min(5, Math.round(Number(value) || 0)));
     return (
-      `<span style="color:#f59e0b;font-size:${compact ? "0.8rem" : "0.92rem"};letter-spacing:0.04em;">` +
+      `<span style="color:#FFD000;font-size:${compact ? "0.8rem" : "0.92rem"};letter-spacing:0.04em;">` +
       `${STAR_FILLED.repeat(rounded)}${STAR_EMPTY.repeat(5 - rounded)}` +
       `</span>`
     );
@@ -1097,7 +1097,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = compact ? "btn-icon" : "btn-secondary btn-sm";
-      button.style.color = rating <= currentRating ? "#f59e0b" : "var(--text-muted)";
+      button.style.color = rating <= currentRating ? "#FFD000" : "var(--text-muted)";
       button.style.padding = compact ? "6px" : "8px 10px";
       button.style.minWidth = compact ? "34px" : "46px";
       button.innerHTML = `<span style="font-size:${compact ? "1rem" : "1.05rem"};">${
@@ -1316,9 +1316,10 @@
     }
 
     button.className = compact ? "btn-primary btn-sm" : "btn-primary btn-sm";
-    button.style.background = "rgba(255,140,66,0.94)";
-    button.style.color = "#111827";
-    button.style.borderColor = "rgba(255,140,66,0.95)";
+    button.style.background = "linear-gradient(135deg, #FFD000 0%, #E5A900 100%)";
+    button.style.color = "#0B0B0B";
+    button.style.fontWeight = "700";
+    button.style.borderColor = "#FFD000";
     button.innerHTML =
       state === "approved"
         ? '<i class="fas fa-download"></i> Download'
@@ -2476,17 +2477,17 @@
     if (status === "rejected") {
       return adminStatusBadge("Rejected", "rgba(239,68,68,0.16)", "#ef4444");
     }
-    return adminStatusBadge("Pending", "rgba(245,158,11,0.16)", "#f59e0b");
+    return adminStatusBadge("Pending", "rgba(255,208,0,0.16)", "#FFD000");
   }
 
   function profileRoleBadge(profile) {
     if (profile.role === "admin") {
-      return adminStatusBadge(profile.role_label || "Admin", "rgba(59,130,246,0.14)", "#3b82f6");
+      return adminStatusBadge(profile.role_label || "Admin", "rgba(255,208,0,0.2)", "#FFD000");
     }
     if (profile.role === "editor") {
-      return adminStatusBadge(profile.role_label || "Editor", "rgba(16,185,129,0.14)", "#10b981");
+      return adminStatusBadge(profile.role_label || "Editor", "rgba(255,255,255,0.12)", "#FFFFFF");
     }
-    return adminStatusBadge(profile.role_label || "Client", "rgba(249,115,22,0.16)", "#f97316");
+    return adminStatusBadge(profile.role_label || "Client", "rgba(184,184,184,0.14)", "#B8B8B8");
   }
 
   function adminOverviewSummaryCards(summary) {
@@ -3462,8 +3463,8 @@
         value: contact.value,
         href: contact.value,
         icon: "fas fa-link",
-        bg: "rgba(255,140,66,0.15)",
-        color: "#ff8c42",
+        bg: "rgba(255,208,0,0.15)",
+        color: "#FFD000",
       });
     });
 

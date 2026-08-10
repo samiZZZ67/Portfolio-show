@@ -70,13 +70,77 @@
             --border: #3a1a70;
             --border-light: #4a2088;
             --gradient-start: #00e5ff;
-            --gradient-end: #d500f9;
-            --overlay: rgba(15,5,32,0.9);
-            --card-shadow: 0 4px 24px rgba(100,0,200,0.2);
-            --input-bg: #140828;
-            --modal-bg: #1e0e40;
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Outfit:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --bg-primary: #0B0B0B;
+            --bg-secondary: #111111;
+            --bg-card: #151515;
+            --bg-card-hover: #1F1F1F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8B8B8;
+            --text-muted: #777777;
+            --accent: #FFD000;
+            --accent-hover: #FFE052;
+            --accent-glow: rgba(255, 208, 0, 0.22);
+            --border: #262626;
+            --border-light: #333333;
+            --success: #22c55e;
+            --warning: #FFD000;
+            --gradient-start: #FFD000;
+            --gradient-end: #E5A900;
+            --overlay: rgba(11, 11, 11, 0.92);
+            --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+            --input-bg: #1B1B1B;
+            --modal-bg: #151515;
         }
 
+        [data-theme="light"] {
+            --bg-primary: #0E0E0E;
+            --bg-secondary: #161616;
+            --bg-card: #1C1C1C;
+            --bg-card-hover: #242424;
+            --text-primary: #FFFFFF;
+            --text-secondary: #C0C0C0;
+            --text-muted: #808080;
+            --accent: #FFD000;
+            --accent-hover: #FFE052;
+            --accent-glow: rgba(255, 208, 0, 0.25);
+            --border: #2E2E2E;
+            --border-light: #383838;
+            --gradient-start: #FFD000;
+            --gradient-end: #E5A900;
+            --overlay: rgba(14, 14, 14, 0.92);
+            --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+            --input-bg: #202020;
+            --modal-bg: #1C1C1C;
+        }
+
+        [data-theme="creative"] {
+            --bg-primary: #070707;
+            --bg-secondary: #0D0D0D;
+            --bg-card: #141414;
+            --bg-card-hover: #1E1E1E;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B5B5B5;
+            --text-muted: #757575;
+            --accent: #FFE033;
+            --accent-hover: #FFF066;
+            --accent-glow: rgba(255, 224, 51, 0.3);
+            --border: #222222;
+            --border-light: #303030;
+            --gradient-start: #FFE033;
+            --gradient-end: #FFD000;
+            --overlay: rgba(7, 7, 7, 0.94);
+            --card-shadow: 0 4px 28px rgba(0, 0, 0, 0.7);
+            --input-bg: #181818;
+            --modal-bg: #141414;
+        }
+
+        /* Basic Setup & Reset */
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         html {
@@ -100,7 +164,7 @@
         ::-webkit-scrollbar-track { background: var(--bg-secondary); }
         ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
 
-        /* Navigation Styles */
+        /* Navigation */
         .nav-main {
             position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
             background: var(--overlay);
@@ -115,6 +179,7 @@
             transition: color 0.3s, transform 0.2s;
             position: relative;
             font-weight: 500;
+            text-decoration: none;
         }
         .nav-link:hover { color: var(--accent); transform: translateY(-1px); }
         .nav-link.active { color: var(--accent); }
@@ -157,39 +222,6 @@
             letter-spacing: 0.22em;
             text-transform: uppercase;
             color: var(--text-secondary);
-        }
-
-        /* Button Styles */
-        .btn-primary {
-            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-            color: #fff; border: none; padding: 12px 28px;
-            border-radius: 12px; font-weight: 600; font-size: 15px;
-            cursor: pointer; transition: all 0.3s ease;
-            box-shadow: 0 4px 16px var(--accent-glow);
-            font-family: 'Outfit', sans-serif;
-            display: inline-flex; align-items: center; gap: 8px;
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 32px var(--accent-glow);
-        }
-
-        .btn-secondary {
-            background: var(--bg-card); color: var(--text-primary);
-            border: 1px solid var(--border); padding: 12px 28px;
-            border-radius: 12px; font-weight: 600; font-size: 15px;
-            cursor: pointer; transition: all 0.3s ease;
-            font-family: 'Outfit', sans-serif;
-            display: inline-flex; align-items: center; gap: 8px;
-        }
-        .btn-secondary:hover {
-            background: var(--bg-card-hover);
-            border-color: var(--accent);
-            transform: translateY(-2px);
-        }
-
-        .btn-sm {
-            padding: 8px 18px; font-size: 13px; border-radius: 8px;
         }
 
         .btn-icon {
