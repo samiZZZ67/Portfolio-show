@@ -1,0 +1,225 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% trans "Continue with Google" %}</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="512x512" href="/favicon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#0a0a0f">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0a0f;
+      --card: #16161f;
+      --border: #2a2a3a;
+      --text: #f0f0f5;
+      --muted: #9898ae;
+      --accent: #e8443a;
+      --accent-soft: rgba(232, 68, 58, 0.18);
+      --field-bg: #11111a;
+      --field-border: #303044;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top right, var(--accent-soft), transparent 34%),
+        linear-gradient(180deg, #101019 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .shell {
+      width: min(100%, 560px);
+      padding: 32px;
+      border-radius: 24px;
+      border: 1px solid var(--border);
+      background: rgba(22, 22, 31, 0.96);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: #ff8a82;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 20px 0 12px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(2rem, 6vw, 2.6rem);
+      line-height: 1.05;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 1rem;
+    }
+
+    .email-pill {
+      margin-top: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 14px;
+      background: #11111a;
+      border: 1px solid var(--field-border);
+      color: var(--text);
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 48px;
+      padding: 0 20px;
+      border-radius: 14px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+      border: none;
+      cursor: pointer;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.96rem;
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+    }
+
+    .button-primary {
+      background: linear-gradient(135deg, #e8443a, #ff8c42);
+      color: #fff;
+    }
+
+    .button-secondary {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+    }
+
+    form {
+      margin-top: 26px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    input, select, textarea {
+      width: 100%;
+      min-height: 50px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--field-border);
+      background: var(--field-bg);
+      color: var(--text);
+      font-size: 0.95rem;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: 2px solid rgba(232, 68, 58, 0.28);
+      border-color: var(--accent);
+    }
+
+    .help {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .error {
+      font-size: 0.84rem;
+      color: #ff8a82;
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    {% firstof form.email.value form.initial.email as resolved_email %}
+    {% if form.email.errors %}
+      <div class="eyebrow">{% trans "Existing account found" %}</div>
+      <h1>{% trans "That email is already registered" %}</h1>
+      <p>{% trans "We found an existing account for this email address. Please sign in with your current account from the homepage instead of creating a new one with Google." %}</p>
+      {% if resolved_email %}
+        <div class="email-pill">
+          <span>{% trans "Email" %}:</span>
+          <span>{{ resolved_email }}</span>
+        </div>
+      {% endif %}
+      <div class="actions">
+        <a class="button button-primary" href="{% url 'portfolio:home' %}">{% trans "Back to home" %}</a>
+        <a class="button button-secondary" href="{% url 'portfolio:google-login-start' %}{% if redirect_field_value %}?{{ redirect_field_name }}={{ redirect_field_value|urlencode }}{% endif %}">{% trans "Try another Google account" %}</a>
+      </div>
+    {% else %}
+      <div class="eyebrow">{{ account.get_provider.name }}</div>
+      <h1>{% trans "Finish your sign up" %}</h1>
+      <p>{% blocktrans with provider_name=account.get_provider.name %}We already pulled your details from {{ provider_name }}. Confirm them below and we will finish setting up your account.{% endblocktrans %}</p>
+      <form method="post" action="{% url 'socialaccount_signup' %}">
+        {% csrf_token %}
+        {% for hidden in form.hidden_fields %}
+          {{ hidden }}
+        {% endfor %}
+        {% for field in form.visible_fields %}
+          <div class="field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+              <div class="help">{{ field.help_text }}</div>
+            {% endif %}
+            {% for error in field.errors %}
+              <div class="error">{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+        {{ redirect_field }}
+        <div class="actions" style="margin-top:4px;">
+          <button class="button button-primary" type="submit">{% trans "Continue" %}</button>
+          <a class="button button-secondary" href="{% url 'portfolio:home' %}">{% trans "Cancel" %}</a>
+        </div>
+      </form>
+    {% endif %}
+  </main>
+</body>
+</html>

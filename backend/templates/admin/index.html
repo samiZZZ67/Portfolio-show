@@ -1,0 +1,34 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+
+{% block content %}
+<section class="portfolio-admin-hero">
+  <div>
+    <p class="portfolio-admin-kicker">Portfolio Control Center</p>
+    <h1>Everything important is one click away.</h1>
+    <p class="portfolio-admin-copy">
+      Use this page to manage account access, editor portfolios, uploaded videos, and community activity without editing the public site.
+    </p>
+  </div>
+  <div class="portfolio-admin-actions">
+    <a class="portfolio-admin-card" href="{% url 'admin:auth_user_changelist' %}">
+      <strong>Users</strong>
+      <span>Create staff, reset access, and edit account details.</span>
+    </a>
+    <a class="portfolio-admin-card" href="{% url 'admin:portfolio_editorprofile_changelist' %}">
+      <strong>Profiles</strong>
+      <span>Review bios, contacts, avatars, and public readiness.</span>
+    </a>
+    <a class="portfolio-admin-card" href="{% url 'admin:portfolio_portfoliovideo_changelist' %}">
+      <strong>Videos</strong>
+      <span>Manage uploads, previews, sort order, and views.</span>
+    </a>
+    <a class="portfolio-admin-card" href="{% url 'admin:portfolio_followrelationship_changelist' %}">
+      <strong>Engagement</strong>
+      <span>Inspect follows, likes, and star ratings from one place.</span>
+    </a>
+  </div>
+</section>
+
+{{ block.super }}
+{% endblock %}
