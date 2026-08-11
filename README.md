@@ -18,7 +18,7 @@ A role-based video portfolio platform built with Django, allowing video editors 
 
 - **Backend**: Django 5.2.13
 - **API**: Django REST Framework
-- **Database**: SQLite (development), PostgreSQL (production)
+- *Database*: SQLite (development), PostgreSQL (production)
 - **Media Storage**: Cloudinary
 - **Deployment**: Render
 - **Frontend**: HTML, CSS, JavaScript (existing index.html)
