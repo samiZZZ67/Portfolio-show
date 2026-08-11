@@ -164,6 +164,7 @@
     refreshActivePlayerState();
     syncAiAssistantState();
     syncGoogleAuthUi();
+    renderCurrentContexts();
   }
 
   function getCsrfToken() {
