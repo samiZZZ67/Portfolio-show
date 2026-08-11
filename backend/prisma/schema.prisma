@@ -1,0 +1,280 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int              @id @default(autoincrement())
+  username     String           @unique
+  email        String           @default("")
+  passwordHash String           @map("password_hash")
+  isStaff      Boolean          @default(false) @map("is_staff")
+  isActive     Boolean          @default(true) @map("is_active")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  editorProfile               EditorProfile?
+  videoLikes                  VideoLike[]
+  videoRatingsPublic          VideoRating[]
+  videoDownloadRequests       VideoDownloadRequest[]       @relation("RequesterDownloadRequests")
+  reviewedDownloadRequests    VideoDownloadRequest[]       @relation("ReviewerDownloadRequests")
+  videoDownloadGrants         VideoDownloadGrant[]         @relation("UserDownloadGrants")
+  grantedVideoDownloads       VideoDownloadGrant[]         @relation("GrantedByDownloads")
+  ownerNotifications          OwnerNotification[]
+  videoAccessLogs             VideoAccessLog[]
+
+  @@map("auth_user")
+}
+
+model EditorProfile {
+  id                 Int                  @id @default(autoincrement())
+  userId             Int                  @unique @map("user_id")
+  role               String               @default("editor")
+  cname              String               @default("")
+  bio                String               @default("Video editor on Ela-sam Portfolio Show.")
+  avatarFile         String               @default("") @map("avatar_file")
+  avatarUrl          String               @default("") @map("avatar_url")
+  telegram           String               @default("")
+  telegramChatId     String               @default("") @map("telegram_chat_id")
+  whatsapp           String               @default("")
+  phone              String               @default("")
+  otherContacts      Json                 @default("[]") @map("other_contacts")
+  clientsServed      Int                  @default(0) @map("clients_served")
+  completedProjects  Int                  @default(0) @map("completed_projects")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  user                   User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videos                 PortfolioVideo[]
+  skills                 EditorSkill[]
+  followingRelationships FollowRelationship[] @relation("FollowerProfile")
+  followerRelationships  FollowRelationship[] @relation("FollowedProfile")
+  videoStarRatings       VideoStarRating[]
+
+  @@map("portfolio_editorprofile")
+}
+
+model SkillTag {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  slug      String        @unique
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  editors   EditorSkill[]
+
+  @@map("portfolio_skilltag")
+}
+
+model EditorSkill {
+  id        Int           @id @default(autoincrement())
+  profileId Int           @map("profile_id")
+  skillId   Int           @map("skill_id")
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  profile   EditorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skill     SkillTag      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, skillId], name: "unique_editor_skill")
+  @@map("portfolio_editorskill")
+}
+
+model PortfolioVideo {
+  id               String               @id @default(uuid())
+  profileId        Int                  @map("profile_id")
+  title            String
+  url              String               @default("")
+  videoSource      String               @default("link") @map("video_source")
+  platform         String               @default("other")
+  uploadedFile     String               @default("") @map("uploaded_file")
+  storagePublicId  String               @default("") @map("storage_public_id")
+  originalFilename String               @default("") @map("original_filename")
+  originalFormat   String               @default("") @map("original_format")
+  originalWidth    Int?                 @map("original_width")
+  originalHeight   Int?                 @map("original_height")
+  originalBitrate  Int?                 @map("original_bitrate")
+  originalFileSize BigInt?              @map("original_file_size")
+  frameRate        String               @default("") @map("frame_rate")
+  watermarkEnabled Boolean              @default(true) @map("watermark_enabled")
+  thumbnailUrl     String               @default("") @map("thumbnail_url")
+  contentType      String               @map("content_type")
+  category         String               @default("Commercial / Ads")
+  duration         String               @default("0:30")
+  views            BigInt               @default(0)
+  sortOrder        Int                  @default(0) @map("sort_order")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  profile          EditorProfile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  ratings          VideoStarRating[]
+  publicLikes      VideoLike[]
+  publicRatings    VideoRating[]
+  downloadRequests VideoDownloadRequest[]
+  downloadGrants   VideoDownloadGrant[]
+  notifications    OwnerNotification[]
+  accessLogs       VideoAccessLog[]
+
+  @@map("portfolio_portfoliovideo")
+}
+
+model FollowRelationship {
+  id         Int           @id @default(autoincrement())
+  followerId Int           @map("follower_id")
+  followedId Int           @map("followed_id")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  follower   EditorProfile @relation("FollowerProfile", fields: [followerId], references: [id], onDelete: Cascade)
+  followed   EditorProfile @relation("FollowedProfile", fields: [followedId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followedId], name: "unique_follow_relationship")
+  @@map("portfolio_followrelationship")
+}
+
+model VideoStarRating {
+  id        Int            @id @default(autoincrement())
+  videoId   String         @map("video_id")
+  profileId Int            @map("profile_id")
+  rating    Int
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  video     PortfolioVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  profile   EditorProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, profileId], name: "unique_video_star_rating")
+  @@map("portfolio_videostarrating")
+}
+
+model VideoLike {
+  id         Int            @id @default(autoincrement())
+  videoId    String         @map("video_id")
+  userId     Int?           @map("user_id")
+  viewerHash String         @map("viewer_hash")
+  ipAddress  String?        @map("ip_address")
+  userAgent  String         @default("") @map("user_agent")
+  isActive   Boolean        @default(true) @map("is_active")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  video      PortfolioVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user       User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([videoId, viewerHash], name: "unique_public_video_like")
+  @@map("portfolio_videolike")
+}
+
+model VideoRating {
+  id         Int            @id @default(autoincrement())
+  videoId    String         @map("video_id")
+  userId     Int?           @map("user_id")
+  viewerHash String         @map("viewer_hash")
+  ipAddress  String?        @map("ip_address")
+  userAgent  String         @default("") @map("user_agent")
+  score      Int
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  video      PortfolioVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user       User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([videoId, viewerHash], name: "unique_public_video_rating")
+  @@map("portfolio_videorating")
+}
+
+model VideoDownloadRequest {
+  id                      Int                @id @default(autoincrement())
+  requesterId             Int                @map("requester_id")
+  videoId                 String             @map("video_id")
+  status                  String             @default("pending")
+  videoTitleSnapshot      String             @default("") @map("video_title_snapshot")
+  videoPreviewUrlSnapshot String             @default("") @map("video_preview_url_snapshot")
+  requestMessage          String             @default("") @map("request_message")
+  ownerResponseMessage    String             @default("") @map("owner_response_message")
+  telegramMessageId       String             @default("") @map("telegram_message_id")
+  telegramChatId          String             @default("") @map("telegram_chat_id")
+  requestedAt             DateTime           @default(now()) @map("requested_at")
+  reviewedAt              DateTime?          @map("reviewed_at")
+  approvedAt              DateTime?          @map("approved_at")
+  reviewedById            Int?               @map("reviewed_by_id")
+
+  requester               User               @relation("RequesterDownloadRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+  reviewedBy              User?              @relation("ReviewerDownloadRequests", fields: [reviewedById], references: [id], onDelete: SetNull)
+  video                   PortfolioVideo     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  downloadGrant           VideoDownloadGrant?
+  ownerNotifications      OwnerNotification[]
+  accessLogs              VideoAccessLog[]
+
+  @@unique([requesterId, videoId], name: "unique_video_download_request_per_user")
+  @@map("portfolio_videodownloadrequest")
+}
+
+model VideoDownloadGrant {
+  id              Int                   @id @default(autoincrement())
+  userId          Int                   @map("user_id")
+  videoId         String                @map("video_id")
+  grantedById     Int?                  @map("granted_by_id")
+  sourceRequestId Int?                  @unique @map("source_request_id")
+  isActive        Boolean               @default(true) @map("is_active")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  revokedAt       DateTime?             @map("revoked_at")
+
+  user            User                  @relation("UserDownloadGrants", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy       User?                 @relation("GrantedByDownloads", fields: [grantedById], references: [id], onDelete: SetNull)
+  video           PortfolioVideo        @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  sourceRequest   VideoDownloadRequest? @relation(fields: [sourceRequestId], references: [id], onDelete: SetNull)
+
+  @@map("portfolio_videodownloadgrant")
+}
+
+model OwnerNotification {
+  id                Int                   @id @default(autoincrement())
+  ownerId           Int                   @map("owner_id")
+  notificationType  String                @map("notification_type")
+  videoId           String                @map("video_id")
+  downloadRequestId Int?                  @map("download_request_id")
+  title             String
+  message           String
+  payload           Json                  @default("{}")
+  isRead            Boolean               @default(false) @map("is_read")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  readAt            DateTime?             @map("read_at")
+
+  owner             User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  video             PortfolioVideo        @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  downloadRequest   VideoDownloadRequest? @relation(fields: [downloadRequestId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_ownernotification")
+}
+
+model VideoAccessLog {
+  id                Int                   @id @default(autoincrement())
+  videoId           String                @map("video_id")
+  actorUserId       Int?                  @map("actor_user_id")
+  downloadRequestId Int?                  @map("download_request_id")
+  eventType         String                @map("event_type")
+  viewerHash        String                @default("") @map("viewer_hash")
+  ipAddress         String?               @map("ip_address")
+  userAgent         String                @default("") @map("user_agent")
+  metadata          Json                  @default("{}")
+  createdAt         DateTime              @default(now()) @map("created_at")
+
+  video             PortfolioVideo        @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  actorUser         User?                 @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  downloadRequest   VideoDownloadRequest? @relation(fields: [downloadRequestId], references: [id], onDelete: SetNull)
+
+  @@map("portfolio_videoaccesslog")
+}
+
+model Session {
+  id        String   @id
+  sid       String   @unique
+  data      String
+  expiresAt DateTime @map("expires_at")
+
+  @@map("session")
+}

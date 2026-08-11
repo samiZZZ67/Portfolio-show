@@ -21,6 +21,7 @@ This guide details step-by-step how to deploy **Portfolio Show** as two independ
                    ▼
 ┌──────────────────────────────────────┐
 │  BACKEND (Render Web Service)        │
+│  Runtime: Node.js + TypeScript       │
 │  Root Directory: backend             │
 │  URL: https://portfolio-show-api.onrender.com
 └──────────┬──────────────┬────────────┘
@@ -31,6 +32,16 @@ This guide details step-by-step how to deploy **Portfolio Show** as two independ
 │ (Database)       │  │ (Cloudinary)     │
 └──────────────────┘  └──────────────────┘
 ```
+
+---
+
+## Prerequisites
+
+Before starting, make sure you have:
+- A GitHub repository containing this codebase.
+- A free account on [Render](https://render.com).
+- A free account on [Neon](https://neon.tech).
+- Accounts for optional services: [Cloudinary](https://cloudinary.com), [Google Cloud Console](https://console.cloud.google.com), [Telegram BotFather](https://t.me/botfather).
 
 ---
 
@@ -59,19 +70,16 @@ This guide details step-by-step how to deploy **Portfolio Show** as two independ
 | **Name** | `portfolio-show-api` (or your choice) |
 | **Branch** | `main` |
 | **Root Directory** | `backend` |
-| **Runtime** | `Python 3` |
-| **Build Command** | `pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate` |
-| **Start Command** | `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT` |
+| **Runtime** | `Node` |
+| **Build Command** | `npm install && npx prisma generate && npx prisma db push && npm run build` |
+| **Start Command** | `npm start` |
 
 5. Add Environment Variables:
-   - `SECRET_KEY` = *(generate long random string)*
-   - `DEBUG` = `False`
+   - `NODE_ENV` = `production`
+   - `SESSION_SECRET` = *(generate long random string)*
    - `DATABASE_URL` = `postgresql://user:pass@ep-xxx-pooler.neon.tech/neondb?sslmode=require`
-   - `ALLOWED_HOSTS` = `portfolio-show-api.onrender.com`
-   - `CSRF_TRUSTED_ORIGINS` = `https://portfolio-show-api.onrender.com`
    - `CORS_ORIGINS` = `https://portfolio-show.onrender.com` *(Fill after Step 3)*
    - `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET`
-   - `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`
    - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_WEBHOOK_SECRET`
    - `GEMINI_API_KEY` / `GROQ_API_KEY`
 
@@ -90,7 +98,7 @@ This guide details step-by-step how to deploy **Portfolio Show** as two independ
 | **Name** | `portfolio-show` |
 | **Branch** | `main` |
 | **Root Directory** | `frontend` |
-| **Build Command** | `sed -i "s|__ELA_API_URL_PLACEHOLDER__|${ELA_API_URL}|g" config.js` |
+| **Build Command** | `bash build.sh` *(or leave blank if using direct URL)* |
 | **Publish Directory** | `.` |
 
 4. Add Environment Variable:
@@ -110,4 +118,3 @@ This guide details step-by-step how to deploy **Portfolio Show** as two independ
 1. **CORS Update**: Update backend `CORS_ORIGINS` variable with your Step 3 Frontend URL.
 2. **Google OAuth Redirect URI**: In Google Cloud Console, set redirect URI to:
    `https://portfolio-show-api.onrender.com/accounts/google/login/callback/`
-3. **Superuser**: In Render backend Shell tab, run `python manage.py createsuperuser` to create your admin login.
