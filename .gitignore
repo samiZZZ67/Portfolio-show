@@ -1,35 +1,53 @@
-# Ignore local configuration and editor-specific files
+# ── Environment / Secrets ───────────────────────────────────────
 *.env
 .env
+backend/.env
+frontend/.env
+local.env
 
-# Python caches and bytecode
+# ── Python ──────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Django / Python local files
+# ── Django / Python local files ─────────────────────────────────
 db.sqlite3
 db.sqlite3-journal
 local_settings.py
 backup.json
 media/
+backend/media/
 staticfiles/
+backend/staticfiles/
 
-# Virtual environments
+# ── Virtual environments ─────────────────────────────────────────
 venv/
 ENV/
 env/
 .venv/
+backend/venv/
+backend/.venv/
 
-# IDE / editor directories and files
+# ── Node / Frontend build ────────────────────────────────────────
+node_modules/
+dist/
+frontend/dist/
+.parcel-cache/
+
+# ── IDE / editor ─────────────────────────────────────────────────
 .vscode/
 .idea/
 *.sublime-workspace
 *.sublime-project
 
-# OS files
+# ── OS files ─────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Secrets
+# ── Secrets ──────────────────────────────────────────────────────
 secretkey.py
+backend/secretkey.py
+
+# ── Logs ─────────────────────────────────────────────────────────
+*.log
+*.err.log

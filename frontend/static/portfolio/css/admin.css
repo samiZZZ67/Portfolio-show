@@ -1,0 +1,149 @@
+:root {
+  --portfolio-admin-accent: #FFD000;
+  --portfolio-admin-accent-dark: #E5A900;
+  --portfolio-admin-surface: #151515;
+  --portfolio-admin-surface-soft: #1B1B1B;
+  --portfolio-admin-border: #262626;
+  --portfolio-admin-text: #FFFFFF;
+  --portfolio-admin-muted: #B8B8B8;
+}
+
+#header {
+  background:
+    radial-gradient(circle at top left, rgba(255, 208, 0, 0.20), transparent 32%),
+    linear-gradient(135deg, #0B0B0B 0%, #151515 58%, #1F1F1F 100%);
+  color: #FFFFFF;
+  border-bottom: 1px solid #262626;
+}
+
+#header a:link,
+#header a:visited {
+  color: #FFFFFF;
+}
+
+.portfolio-admin-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.portfolio-admin-brand__title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  color: #FFD000;
+}
+
+.portfolio-admin-brand__subtitle {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.92rem;
+}
+
+.portfolio-admin-toplinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.portfolio-admin-toplinks a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 208, 0, 0.3);
+  background: rgba(255, 208, 0, 0.1);
+  color: #FFD000;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.portfolio-admin-toplinks a:hover {
+  background: #FFD000;
+  color: #0B0B0B;
+}
+
+.portfolio-admin-hero {
+  margin: 0 0 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--portfolio-admin-border);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 208, 0, 0.14), transparent 28%),
+    linear-gradient(180deg, #1B1B1B 0%, var(--portfolio-admin-surface) 100%);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+.portfolio-admin-kicker {
+  margin: 0 0 0.4rem;
+  color: var(--portfolio-admin-accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.76rem;
+}
+
+.portfolio-admin-hero h1 {
+  margin: 0;
+  color: var(--portfolio-admin-text);
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+}
+
+.portfolio-admin-copy {
+  margin: 0.75rem 0 0;
+  max-width: 60rem;
+  color: var(--portfolio-admin-muted);
+  line-height: 1.6;
+  font-size: 1rem;
+}
+
+.portfolio-admin-actions {
+  margin-top: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+}
+
+.portfolio-admin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--portfolio-admin-surface);
+  border: 1px solid var(--portfolio-admin-border);
+  color: var(--portfolio-admin-text);
+  text-decoration: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.portfolio-admin-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 208, 0, 0.6);
+  box-shadow: 0 16px 32px rgba(255, 208, 0, 0.15);
+}
+
+.portfolio-admin-card strong {
+  font-size: 1rem;
+  color: #FFFFFF;
+}
+
+.portfolio-admin-card span {
+  color: var(--portfolio-admin-muted);
+  line-height: 1.5;
+}
+
+.dashboard #content {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .portfolio-admin-toplinks {
+    margin-top: 0.75rem;
+  }
+}

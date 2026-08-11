@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Me - Ela-sam Portfolio</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <meta name="theme-color" content="#0a0a0f">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Outfit:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a26;
+            --bg-card-hover: #222233;
+            --text-primary: #f0f0f5;
+            --text-secondary: #8888a0;
+            --text-muted: #555570;
+            --accent: #e8443a;
+            --accent-hover: #ff5a50;
+            --accent-glow: rgba(232,68,58,0.3);
+            --border: #2a2a3a;
+            --border-light: #333348;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --gradient-start: #e8443a;
+            --gradient-end: #ff8c42;
+            --overlay: rgba(10,10,15,0.85);
+            --card-shadow: 0 4px 24px rgba(0,0,0,0.4);
+            --input-bg: #16161f;
+            --modal-bg: #1a1a26;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #f8f8fc;
+            --bg-secondary: #eeeef4;
+            --bg-card: #ffffff;
+            --bg-card-hover: #f0f0f8;
+            --text-primary: #1a1a2e;
+            --text-secondary: #666680;
+            --text-muted: #9999aa;
+            --accent: #d63031;
+            --accent-hover: #e8443a;
+            --accent-glow: rgba(214,48,49,0.15);
+            --border: #dddde8;
+            --border-light: #e8e8f0;
+            --overlay: rgba(248,248,252,0.9);
+            --card-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            --input-bg: #f0f0f6;
+            --modal-bg: #ffffff;
+        }
+
+        [data-theme="creative"] {
+            --bg-primary: #0f0520;
+            --bg-secondary: #160830;
+            --bg-card: #1e0e40;
+            --bg-card-hover: #2a1560;
+            --text-primary: #f5f0ff;
+            --text-secondary: #b090d0;
+            --text-muted: #7050a0;
+            --accent: #00e5ff;
+            --accent-hover: #40efff;
+            --accent-glow: rgba(0,229,255,0.3);
+            --border: #3a1a70;
+            --border-light: #4a2088;
+            --gradient-start: #00e5ff;
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Outfit:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --bg-primary: #0B0B0B;
+            --bg-secondary: #111111;
+            --bg-card: #151515;
+            --bg-card-hover: #1F1F1F;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8B8B8;
+            --text-muted: #777777;
+            --accent: #FFD000;
+            --accent-hover: #FFE052;
+            --accent-glow: rgba(255, 208, 0, 0.22);
+            --border: #262626;
+            --border-light: #333333;
+            --success: #22c55e;
+            --warning: #FFD000;
+            --gradient-start: #FFD000;
+            --gradient-end: #E5A900;
+            --overlay: rgba(11, 11, 11, 0.92);
+            --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+            --input-bg: #1B1B1B;
+            --modal-bg: #151515;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #0E0E0E;
+            --bg-secondary: #161616;
+            --bg-card: #1C1C1C;
+            --bg-card-hover: #242424;
+            --text-primary: #FFFFFF;
+            --text-secondary: #C0C0C0;
+            --text-muted: #808080;
+            --accent: #FFD000;
+            --accent-hover: #FFE052;
+            --accent-glow: rgba(255, 208, 0, 0.25);
+            --border: #2E2E2E;
+            --border-light: #383838;
+            --gradient-start: #FFD000;
+            --gradient-end: #E5A900;
+            --overlay: rgba(14, 14, 14, 0.92);
+            --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+            --input-bg: #202020;
+            --modal-bg: #1C1C1C;
+        }
+
+        [data-theme="creative"] {
+            --bg-primary: #070707;
+            --bg-secondary: #0D0D0D;
+            --bg-card: #141414;
+            --bg-card-hover: #1E1E1E;
+            --text-primary: #FFFFFF;
+            --text-secondary: #B5B5B5;
+            --text-muted: #757575;
+            --accent: #FFE033;
+            --accent-hover: #FFF066;
+            --accent-glow: rgba(255, 224, 51, 0.3);
+            --border: #222222;
+            --border-light: #303030;
+            --gradient-start: #FFE033;
+            --gradient-end: #FFD000;
+            --overlay: rgba(7, 7, 7, 0.94);
+            --card-shadow: 0 4px 28px rgba(0, 0, 0, 0.7);
+            --input-bg: #181818;
+            --modal-bg: #141414;
+        }
+
+        /* Basic Setup & Reset */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html {
+            scroll-behavior: smooth;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent) var(--bg-secondary);
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background 0.5s ease, color 0.5s ease;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        h1, h2, h3, h4, h5 { font-family: 'Space Grotesk', sans-serif; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+
+        /* Navigation */
+        .nav-main {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+            background: var(--overlay);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            transition: all 0.4s ease;
+        }
+        .nav-main.scrolled { box-shadow: 0 2px 20px rgba(0,0,0,0.3); }
+
+        .nav-link {
+            color: var(--text-secondary);
+            transition: color 0.3s, transform 0.2s;
+            position: relative;
+            font-weight: 500;
+            text-decoration: none;
+        }
+        .nav-link:hover { color: var(--accent); transform: translateY(-1px); }
+        .nav-link.active { color: var(--accent); }
+        .nav-link::after {
+            content: ''; position: absolute; bottom: -4px; left: 0;
+            width: 0; height: 2px; background: var(--accent);
+            transition: width 0.3s ease;
+        }
+        .nav-link:hover::after, .nav-link.active::after { width: 100%; }
+
+        .brand-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        .brand-mark {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            display: block;
+            filter: drop-shadow(0 10px 22px var(--accent-glow));
+        }
+        .brand-copy {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.05;
+        }
+        .brand-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: 0.01em;
+        }
+        .brand-subtitle {
+            margin-top: 3px;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        .btn-icon {
+            background: var(--bg-card); color: var(--text-primary);
+            border: 1px solid var(--border); padding: 10px;
+            border-radius: 10px; cursor: pointer; transition: all 0.3s ease;
+        }
+        .btn-icon:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--accent);
+        }
+
+        /* Theme Switcher */
+        .theme-switcher {
+            display: flex; gap: 2px; background: var(--bg-card);
+            border: 1px solid var(--border); border-radius: 10px; padding: 2px;
+        }
+        .theme-btn {
+            padding: 8px 12px; border: none; border-radius: 8px;
+            cursor: pointer; transition: all 0.3s ease;
+            color: var(--text-secondary);
+        }
+        .theme-btn:hover { color: var(--accent); }
+        .theme-btn.active {
+            background: var(--accent); color: #fff;
+        }
+
+        /* Section Styles */
+        .section {
+            padding: 80px 0;
+        }
+
+        .container {
+            max-width: 1200px; margin: 0 auto; padding: 0 24px;
+        }
+
+        .hero-section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+        }
+
+        .profile-image {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid var(--accent);
+            box-shadow: 0 8px 32px var(--accent-glow);
+            transition: transform 0.3s ease;
+        }
+
+        .profile-image:hover {
+            transform: scale(1.05);
+        }
+
+        /* Timeline Styles */
+        .timeline {
+            position: relative;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 30px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--accent), var(--accent-glow));
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-left: 80px;
+            margin-bottom: 40px;
+            padding: 20px;
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: var(--card-shadow);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .timeline-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        }
+
+        .timeline-dot {
+            position: absolute;
+            left: -54px;
+            top: 20px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: 3px solid var(--bg-primary);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        /* Skills Styles */
+        .skill-bar {
+            margin-bottom: 20px;
+        }
+
+        .skill-name {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .skill-progress {
+            height: 8px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .skill-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--gradient-start), var(--gradient-end));
+            border-radius: 4px;
+            width: 0;
+            transition: width 2s ease;
+            position: relative;
+        }
+
+        .skill-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        /* Contact Styles */
+        .contact-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--card-shadow);
+            transition: transform 0.3s ease;
+        }
+
+        .contact-card:hover {
+            transform: translateY(-5px);
+        }
+
+        /* Animation Classes */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeInUp 0.8s ease forwards;
+        }
+
+        .fade-in.delay-1 { animation-delay: 0.2s; }
+        .fade-in.delay-2 { animation-delay: 0.4s; }
+        .fade-in.delay-3 { animation-delay: 0.6s; }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Mobile Menu */
+        .mobile-backdrop {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 999; display: none;
+        }
+
+        .mobile-menu {
+            position: fixed; top: 0; right: -300px; width: 280px; height: 100vh;
+            background: var(--bg-card); border-left: 1px solid var(--border);
+            transition: right 0.3s ease; z-index: 1000; padding: 80px 24px 24px;
+        }
+
+        .mobile-menu.open { right: 0; }
+        .mobile-backdrop.open { display: block; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .desktop-nav { display: none; }
+            #mobileMenuBtn { display: block; }
+            .hero-section { padding-top: 80px; min-height: auto; text-align: center; }
+            .timeline::before { left: 20px; }
+            .timeline-item { margin-left: 60px; }
+            .timeline-dot { left: -44px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav-main" id="mainNav">
+        <div style="max-width:1280px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:68px;">
+            <a href="/" class="brand-link">
+                <img src="/static/portfolio/img/logo-mark.png" alt="Editor's Space logo" class="brand-mark">
+                <span class="brand-copy">
+                    <span class="brand-title">Editor's Space</span>
+                    <span class="brand-subtitle">By Ela-sam</span>
+                </span>
+            </a>
+
+            <div style="display:flex;align-items:center;gap:28px;" class="desktop-nav">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/discover/" class="nav-link">Discover</a>
+                <a href="/about/" class="nav-link active">About Me</a>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:12px;" class="desktop-nav">
+                <div class="theme-switcher">
+                    <button class="theme-btn active" data-theme-val="dark" onclick="setTheme('dark')" title="Dark"><i class="fas fa-moon"></i></button>
+                    <button class="theme-btn" data-theme-val="light" onclick="setTheme('light')" title="Light"><i class="fas fa-sun"></i></button>
+                    <button class="theme-btn" data-theme-val="creative" onclick="setTheme('creative')" title="Creative"><i class="fas fa-palette"></i></button>
+                </div>
+            </div>
+
+            <button class="btn-icon" id="mobileMenuBtn" onclick="toggleMobileMenu()">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-backdrop" id="mobileBackdrop" onclick="toggleMobileMenu()"></div>
+    <div class="mobile-menu" id="mobileMenu">
+        <div style="display:flex;flex-direction:column;gap:20px;">
+            <a href="/" class="nav-link" style="font-size:18px;" onclick="toggleMobileMenu();">Home</a>
+            <a href="/discover/" class="nav-link" style="font-size:18px;" onclick="toggleMobileMenu();">Discover</a>
+            <a href="/about/" class="nav-link active" style="font-size:18px;" onclick="toggleMobileMenu();">About Me</a>
+        </div>
+    </div>
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="container">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;" class="hero-content">
+            <!-- Left Column - Text Content -->
+            <div class="fade-in">
+                <h1 style="font-size:3.5rem;font-weight:700;margin-bottom:20px;background:linear-gradient(135deg,var(--gradient-start),var(--gradient-end));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">
+                    Hi, I'm Samuel Firegedil
+                </h1>
+                <p style="font-size:1.2rem;color:var(--text-secondary);margin-bottom:30px;line-height:1.6;">
+                    A passionate student and full-stack developer with a keen interest in AI and machine learning.
+                    I love creating innovative web applications and exploring the frontiers of technology.
+                </p>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                    <a href="#contact" class="btn-primary">
+                        <i class="fas fa-envelope"></i> Get In Touch
+                    </a>
+                    <a href="#journey" class="btn-secondary">
+                        <i class="fas fa-route"></i> My Journey
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Right Column - Stacked Images -->
+            <div style="display:flex;flex-direction:column;gap:30px;align-items:center;" class="fade-in delay-1">
+                <img src="https://raw.githubusercontent.com/samiZZZ67/Assets/main/ela%20sam/samm.jpg"
+                    alt="Sam's Profile"
+                    class="profile-image">
+                
+                <img src="https://raw.githubusercontent.com/samiZZZ67/Assets/main/ela%20sam/professinal%20looks%20sami.png"
+                    alt="Pro look Profile"
+                    class="profile-image">
+            </div>
+        </div>
+    </div>
+</section>
+    </section>
+
+    <!-- My Journey Section -->
+    <section id="journey" class="section">
+        <div class="container">
+            <div style="text-align:center;margin-bottom:60px;" class="fade-in">
+                <h2 style="font-size:2.5rem;font-weight:700;margin-bottom:16px;">My Journey</h2>
+                <p style="font-size:1.1rem;color:var(--text-secondary);max-width:600px;margin:0 auto;">
+                    From my first lines of code to building complex applications, here's the path that brought me here.
+                </p>
+            </div>
+
+            <div class="timeline fade-in delay-1">
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                        <i class="fas fa-code" style="color:var(--accent);font-size:24px;"></i>
+                        <h3 style="font-size:1.3rem;font-weight:600;">Started Programming</h3>
+                    </div>
+                    <p style="color:var(--text-secondary);line-height:1.6;">
+                        Began my programming journey with curiosity and determination. Started with basic HTML and CSS,
+                        then moved to C++ and Python fundamentals.
+                    </p>
+                    <span style="display:block;margin-top:12px;font-size:0.9rem;color:var(--text-muted);">2025</span>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                        <i class="fas fa-layer-group" style="color:var(--accent);font-size:24px;"></i>
+                        <h3 style="font-size:1.3rem;font-weight:600;">Learned Full-Stack Development</h3>
+                    </div>
+                    <p style="color:var(--text-secondary);line-height:1.6;">
+                        Mastered both frontend and backend technologies. Built responsive websites using Django,
+                        and various databases.  Currently am Learning about REST APIs, authentication, and deployment.
+                    </p>
+                    <span style="display:block;margin-top:12px;font-size:0.9rem;color:var(--text-muted);">2026</span>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                        <i class="fas fa-rocket" style="color:var(--accent);font-size:24px;"></i>
+                        <h3 style="font-size:1.3rem;font-weight:600;">Working on Web Projects</h3>
+                    </div>
+                    <p style="color:var(--text-secondary);line-height:1.6;">
+                        Currently developing portfolio websites, e-commerce platforms,  E-learning,Learning log, and Blog.
+                        Focusing on clean code, user experience, and performance optimization.
+                    </p>
+                    <span style="display:block;margin-top:12px;font-size:0.9rem;color:var(--text-muted);">2026</span>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                        <i class="fas fa-brain" style="color:var(--accent);font-size:24px;"></i>
+                        <h3 style="font-size:1.3rem;font-weight:600;">AI & Machine Learning Projects</h3>
+                    </div>
+                    <p style="color:var(--text-secondary);line-height:1.6;">
+                        Excited to dive deeper into artificial intelligence and machine learning. Planning to work on
+                        ai integrated webs, natural language processing, and predictive analytics.
+                    </p>
+                    <span style="display:block;margin-top:12px;font-size:0.9rem;color:var(--text-muted);">2026</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Skills Section -->
+    <section id="skills" class="section" style="background:var(--bg-secondary);">
+        <div class="container">
+            <div style="text-align:center;margin-bottom:60px;" class="fade-in">
+                <h2 style="font-size:2.5rem;font-weight:700;margin-bottom:16px;">Technical Skills</h2>
+                <p style="font-size:1.1rem;color:var(--text-secondary);max-width:600px;margin:0 auto;">
+                    Technologies and tools I work with to bring ideas to life.
+                </p>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:40px;" class="fade-in delay-1">
+                <div>
+                    <h3 style="font-size:1.5rem;font-weight:600;margin-bottom:30px;text-align:center;">Frontend</h3>
+                    <div class="skill-bar">
+                        <div class="skill-name">
+                            <span>HTML & CSS</span>
+                            <span>95%</span>
+                        </div>
+                        <div class="skill-progress">
+                            <div class="skill-fill" style="width:95%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="skill-bar">
+                        <div class="skill-name">
+                            <span>Django</span>
+                            <span>80%</span>
+                        </div>
+                        <div class="skill-progress">
+                            <div class="skill-fill" style="width:80%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 style="font-size:1.5rem;font-weight:600;margin-bottom:30px;text-align:center;">Backend</h3>
+                    <div class="skill-bar">
+                        <div class="skill-name">
+                            <span>Python</span>
+                            <span>90%</span>
+                        </div>
+                        <div class="skill-progress">
+                            <div class="skill-fill" style="width:90%;"></div>
+                        </div>
+                    </div>
+                    <div class="skill-bar">
+                        <div class="skill-name">
+                            <span>Django</span>
+                            <span>85%</span>
+                        </div>
+                        <div class="skill-progress">
+                            <div class="skill-fill" style="width:85%;"></div>
+                        </div>
+                    </div>
+                    <div class="skill-bar">
+                        <div class="skill-name">
+                            <span>Node.js</span>
+                            <span>25%</span>
+                        </div>
+                        <div class="skill-progress">
+                            <div class="skill-fill" style="width:75%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 style="font-size:1.5rem;font-weight:600;margin-bottom:30px;text-align:center;">Other</h3>
+                    <div class="skill-bar">
+                        <div class="skill-name">
+                            <span>Git & Version Control</span>
+                            <span>88%</span>
+                        </div>
+                        <div class="skill-progress">
+                            <div class="skill-fill" style="width:88%;"></div>
+                        </div>
+                    </div>
+                    <div class="skill-bar">
+                        <div class="skill-name">
+                            <span>Database Design</span>
+                            <span>80%</span>
+                        </div>
+                        <div class="skill-progress">
+                            <div class="skill-fill" style="width:80%;"></div>
+                        </div>
+                    </div>
+                    <div class="skill-bar">
+                        <div class="skill-name">
+                            <span>UI/UX Design</span>
+                            <span>70%</span>
+                        </div>
+                        <div class="skill-progress">
+                            <div class="skill-fill" style="width:70%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Documents & Resources Section -->
+    <section id="resources" class="section">
+        <div class="container">
+            <div style="text-align:center;margin-bottom:60px;" class="fade-in">
+                <h2 style="font-size:2.5rem;font-weight:700;margin-bottom:16px;">Documents & Resources</h2>
+                <p style="font-size:1.1rem;color:var(--text-secondary);max-width:600px;margin:0 auto;">
+                    Download my CV and explore project documentation and achievements.
+                </p>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;" class="fade-in delay-1">
+                <div class="contact-card">
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                        <i class="fas fa-file-pdf" style="color:var(--accent);font-size:24px;"></i>
+                        <h3 style="font-size:1.3rem;font-weight:600;">Resume/CV</h3>
+                    </div>
+                    <p style="color:var(--text-secondary);margin-bottom:20px;">
+                        Download my latest resume to learn more about my experience and qualifications.
+                    </p>
+                    <a href="/media/documents/cv.pdf" class="btn-primary btn-sm" download>
+                        <i class="fas fa-download"></i> Download CV
+                    </a>
+                </div>
+
+                <div class="contact-card">
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                        <i class="fas fa-folder-open" style="color:var(--accent);font-size:24px;"></i>
+                        <h3 style="font-size:1.3rem;font-weight:600;">Project Documentation</h3>
+                    </div>
+                    <p style="color:var(--text-secondary);margin-bottom:20px;">
+                        Explore detailed documentation for my projects, including architecture and implementation details.
+                    </p>
+                    <a href="https://github.com/samiZZZ67/Portfolio-show/blob/main/README.md" class="btn-secondary btn-sm">
+                        <i class="fas fa-external-link-alt"></i> View Projects
+                    </a>
+                </div>
+
+                <div class="contact-card">
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                        <i class="fas fa-trophy" style="color:var(--accent);font-size:24px;"></i>
+                        <h3 style="font-size:1.3rem;font-weight:600;">Certificates & Achievements</h3>
+                    </div>
+                    <p style="color:var(--text-secondary);margin-bottom:20px;">
+                        View my certifications, awards, and professional achievements in technology and development.
+                    </p>
+                    <a href="#certificates" class="btn-secondary btn-sm">
+                        <i class="fas fa-medal"></i> View Certificates
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+<section id="contact" class="section" style="background:var(--bg-secondary);padding:100px 0;">
+    <div class="container">
+
+        <!-- Heading -->
+        <div style="text-align:center;margin-bottom:70px;" class="fade-in">
+            <h2 style="font-size:2.8rem;font-weight:700;margin-bottom:16px;">
+                Get In Touch
+            </h2>
+
+            <p style="font-size:1.1rem;color:var(--text-secondary);max-width:650px;margin:0 auto;line-height:1.7;">
+                I'm always interested in new opportunities, collaborations,
+                and exciting projects. Feel free to contact me anytime.
+            </p>
+        </div>
+
+        <!-- Cards -->
+        <div style="
+            display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+            gap:30px;
+            max-width:1000px;
+            margin:0 auto;
+        " class="fade-in delay-1">
+
+            <!-- Email Card -->
+            <div class="contact-card">
+                <div class="contact-icon">
+                    <i class="fas fa-envelope"></i>
+                </div>
+
+                <h3>Email</h3>
+
+                <p>
+                    Feel free to reach out for collaborations,
+                    freelance work, or opportunities.
+                </p>
+
+                <a href="mailto:aiyafikre@gmail.com" class="contact-btn">
+                    Send Email
+                </a>
+            </div>
+
+            <!-- Telegram Card -->
+            <div class="contact-card">
+                <div class="contact-icon">
+                    <i class="fab fa-telegram"></i>
+                </div>
+
+                <h3>Telegram</h3>
+
+                <p>
+                    Quick communication and direct responses anytime.
+                </p>
+
+                <a href="https://t.me/EloiCry" target="_blank" class="contact-btn">
+                    Open Telegram
+                </a>
+            </div>
+
+            <!-- GitHub Card -->
+            <div class="contact-card">
+                <div class="contact-icon">
+                    <i class="fab fa-github"></i>
+                </div>
+
+                <h3>GitHub</h3>
+
+                <p>
+                    Explore my projects, repositories,
+                    and open-source contributions.
+                </p>
+
+                <a href="https://github.com/samiZZZ67" target="_blank" class="contact-btn">
+                    Visit GitHub
+                </a>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- Contact Section Styling -->
+<style>
+
+.contact-card{
+    background:var(--bg-primary);
+    padding:35px 30px;
+    border-radius:20px;
+    text-align:center;
+    transition:0.4s ease;
+    border:1px solid rgba(255,255,255,0.05);
+    box-shadow:0 10px 25px rgba(0,0,0,0.08);
+}
+
+.contact-card:hover{
+    transform:translateY(-10px);
+    box-shadow:0 20px 40px rgba(0,0,0,0.15);
+}
+
+.contact-icon{
+    width:70px;
+    height:70px;
+    margin:0 auto 20px;
+    border-radius:50%;
+    background:rgba(0,123,255,0.1);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}
+
+.contact-icon i{
+    font-size:30px;
+    color:var(--accent);
+}
+
+.contact-card h3{
+    font-size:1.4rem;
+    margin-bottom:15px;
+    font-weight:600;
+}
+
+.contact-card p{
+    color:var(--text-secondary);
+    line-height:1.7;
+    margin-bottom:25px;
+}
+
+.contact-btn{
+    display:inline-block;
+    padding:12px 24px;
+    border-radius:12px;
+    background:var(--accent);
+    color:white;
+    text-decoration:none;
+    font-weight:600;
+    transition:0.3s ease;
+}
+
+.contact-btn:hover{
+    transform:scale(1.05);
+    opacity:0.9;
+}
+
+</style>
+
+<!-- Footer -->
+<footer style="background:var(--bg-card);border-top:1px solid var(--border);padding:40px 0;margin-top:80px;">
+    <div class="container">
+        <div style="text-align:center;">
+            <p style="color:var(--text-secondary);margin-bottom:20px;">
+                © 2026 Sam. Built with passion and modern web technologies.
+            </p>
+            <style>
+                .social-link {
+                    color: var(--text-secondary);
+                    transition: all 0.3s ease;
+                    font-size: 1.5rem;
+                }
+                .social-link:hover {
+                    color: var(--gradient-start);
+                    transform: translateY(-3px);
+                }
+            </style>
+
+            <div style="display:flex;justify-content:center;gap:20px;">
+                <a href="mailto:abiyafikre@gmail.com" class="social-link" aria-label="Email">
+                    <i class="fas fa-envelope"></i>
+                </a>
+                <a href="https://github.com/samiZZZ67" target="_blank" class="social-link" aria-label="GitHub">
+                    <i class="fab fa-github"></i>
+                </a>
+                <a href="https://t.me/EloiCry" target="_blank" class="social-link" aria-label="Telegram">
+                    <i class="fab fa-telegram"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</footer>
+    <script>
+        // Theme switching functionality
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+
+            // Update active theme button
+            document.querySelectorAll('.theme-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-theme-val="${theme}"]`).classList.add('active');
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        setTheme(savedTheme);
+
+        // Mobile menu functionality
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobileMenu');
+            const backdrop = document.getElementById('mobileBackdrop');
+            menu.classList.toggle('open');
+            backdrop.classList.toggle('open');
+        }
+
+        // Navigation scroll effect
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('mainNav');
+            if (window.scrollY > 50) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+        });
+
+        // Animate skill bars on scroll
+        function animateSkills() {
+            const skillFills = document.querySelectorAll('.skill-fill');
+            skillFills.forEach(fill => {
+                const width = fill.style.width;
+                fill.style.width = '0';
+                setTimeout(() => {
+                    fill.style.width = width;
+                }, 500);
+            });
+        }
+
+        // Intersection Observer for animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('fade-in');
+                    if (entry.target.id === 'skills') {
+                        setTimeout(animateSkills, 1000);
+                    }
+                }
+            });
+        }, observerOptions);
+
+        // Observe elements for animation
+        document.querySelectorAll('.fade-in').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Initialize animations on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Trigger initial animations
+            setTimeout(() => {
+                document.querySelectorAll('.fade-in').forEach(el => {
+                    el.classList.add('fade-in');
+                });
+            }, 100);
+        });
+    </script>
+</body>
+</html></content>
+<!-- <parameter name="filePath">c:\Users\yosee\Documents\Portfolio show\templates\portfolio\about.html -->
